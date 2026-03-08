@@ -130,6 +130,26 @@ func isValidToken(token string) bool {
 	return true
 }
 
+// inferDocType 根据 token 前缀推断文档类型
+// doxcn/doccn → doc（旧版文档），shtcn → sheet，bascn → bitable，其他 → docx
+func inferDocType(token string) string {
+	if strings.HasPrefix(token, "doxcn") || strings.HasPrefix(token, "doccn") {
+		return "doc"
+	}
+	if strings.HasPrefix(token, "shtcn") {
+		return "sheet"
+	}
+	if strings.HasPrefix(token, "bascn") {
+		return "bitable"
+	}
+	return "docx"
+}
+
+// isOldDoc 判断 token 是否为旧版文档
+func isOldDoc(token string) bool {
+	return strings.HasPrefix(token, "doxcn") || strings.HasPrefix(token, "doccn")
+}
+
 // splitAndTrim 按逗号分割字符串并去除空白
 func splitAndTrim(s string) []string {
 	parts := strings.Split(s, ",")

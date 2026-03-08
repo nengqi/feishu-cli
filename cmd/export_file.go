@@ -51,6 +51,14 @@ var exportFileCmd = &cobra.Command{
 		docType, _ := cmd.Flags().GetString("doc-type")
 		outputPath, _ := cmd.Flags().GetString("output")
 
+		// 未显式指定 --doc-type 时，根据 token 前缀自动推断
+		if !cmd.Flags().Changed("doc-type") {
+			docType = inferDocType(docToken)
+			if docType != "docx" {
+				fmt.Printf("文档类型（自动检测）: %s\n", docType)
+			}
+		}
+
 		if outputPath == "" {
 			outputPath = fmt.Sprintf("%s.%s", docToken, fileType)
 		}
@@ -59,6 +67,9 @@ var exportFileCmd = &cobra.Command{
 		fmt.Printf("正在创建导出任务...\n")
 		ticket, err := client.CreateExportTask(docToken, docType, fileType)
 		if err != nil {
+			if docType == "docx" && !cmd.Flags().Changed("doc-type") {
+				fmt.Fprintf(cmd.ErrOrStderr(), "提示: 如果这是旧版文档，请尝试 --doc-type doc\n")
+			}
 			return err
 		}
 		fmt.Printf("  任务 ID: %s\n", ticket)

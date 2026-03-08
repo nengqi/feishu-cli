@@ -18,7 +18,7 @@ var exportWikiCmd = &cobra.Command{
 
 支持的文档类型:
   docx      新版文档（完整支持）
-  doc       旧版文档（暂不支持）
+  doc       旧版文档（通过 docs/v1 API 获取 Markdown）
 
 工作流程:
   1. 获取节点信息，获取实际文档 Token
@@ -68,8 +68,13 @@ var exportWikiCmd = &cobra.Command{
 		fmt.Printf("文档 Token: %s\n", node.ObjToken)
 
 		// 2. 检查文档类型
+		if node.ObjType == "doc" {
+			// 旧版文档无法通过 API 导出 Markdown（docs/v1/content 仅支持 docx）
+			return fmt.Errorf("旧版文档（doc 类型）不支持导出 Markdown\n建议：feishu-cli doc export-file %s --type docx -o doc.docx", node.ObjToken)
+		}
+
 		if node.ObjType != "docx" {
-			return fmt.Errorf("暂不支持导出 %s 类型的文档，目前仅支持 docx", node.ObjType)
+			return fmt.Errorf("暂不支持导出 %s 类型的文档，目前仅支持 docx 和 doc", node.ObjType)
 		}
 
 		// 3. 获取文档块
@@ -96,37 +101,43 @@ var exportWikiCmd = &cobra.Command{
 		}
 
 		// 5. 保存文件
-		outputPath, _ := cmd.Flags().GetString("output")
-		if outputPath == "" {
-			// 使用标题作为文件名
-			safeTitle := node.Title
-			if safeTitle == "" {
-				safeTitle = nodeToken
-			}
-			outputPath = fmt.Sprintf("/tmp/%s.md", safeTitle)
-		}
-
-		// 路径安全检查
-		if err := validateOutputPath(outputPath, ""); err != nil {
-			return fmt.Errorf("输出路径不安全: %w", err)
-		}
-
-		// 确保目录存在（使用 0700 权限保护）
-		dir := filepath.Dir(outputPath)
-		if dir != "" && dir != "." {
-			if err := os.MkdirAll(dir, 0700); err != nil {
-				return fmt.Errorf("创建目录失败: %w", err)
-			}
-		}
-
-		// 使用 0600 权限保护导出文件
-		if err := os.WriteFile(outputPath, []byte(markdown), 0600); err != nil {
-			return fmt.Errorf("写入文件失败: %w", err)
-		}
-
-		fmt.Printf("已导出到 %s\n", outputPath)
-		return nil
+		outputPath := resolveWikiOutputPath(cmd, node.Title, nodeToken)
+		return writeWikiOutput(outputPath, markdown)
 	},
+}
+
+// resolveWikiOutputPath 解析 wiki export 的输出路径
+func resolveWikiOutputPath(cmd *cobra.Command, title, nodeToken string) string {
+	outputPath, _ := cmd.Flags().GetString("output")
+	if outputPath == "" {
+		safeTitle := title
+		if safeTitle == "" {
+			safeTitle = nodeToken
+		}
+		outputPath = fmt.Sprintf("/tmp/%s.md", safeTitle)
+	}
+	return outputPath
+}
+
+// writeWikiOutput 写入 wiki export 结果到文件
+func writeWikiOutput(outputPath, content string) error {
+	if err := validateOutputPath(outputPath, ""); err != nil {
+		return fmt.Errorf("输出路径不安全: %w", err)
+	}
+
+	dir := filepath.Dir(outputPath)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return fmt.Errorf("创建目录失败: %w", err)
+		}
+	}
+
+	if err := os.WriteFile(outputPath, []byte(content), 0600); err != nil {
+		return fmt.Errorf("写入文件失败: %w", err)
+	}
+
+	fmt.Printf("已导出到 %s\n", outputPath)
+	return nil
 }
 
 func init() {

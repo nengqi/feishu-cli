@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
 
 	"github.com/riba2534/feishu-cli/internal/client"
@@ -43,7 +44,24 @@ var exportMarkdownCmd = &cobra.Command{
 		downloadImages, _ := cmd.Flags().GetBool("download-images")
 		assetsDir, _ := cmd.Flags().GetString("assets-dir")
 
-		// Get all blocks
+		// 旧版文档（doxcn/doccn）：先导出为 DOCX，再用 pandoc 转 Markdown
+		if isOldDoc(documentID) {
+			markdown, err := exportOldDocAsMarkdown(documentID)
+			if err != nil {
+				return err
+			}
+			if output != "" {
+				if err := os.WriteFile(output, []byte(markdown), 0644); err != nil {
+					return fmt.Errorf("写入输出文件失败: %w", err)
+				}
+				fmt.Printf("已导出到 %s\n", output)
+			} else {
+				fmt.Print(markdown)
+			}
+			return nil
+		}
+
+		// 新版文档走 Block API
 		blocks, err := client.GetAllBlocks(documentID)
 		if err != nil {
 			return fmt.Errorf("获取块失败: %w", err)
@@ -103,8 +121,8 @@ var exportMarkdownCmd = &cobra.Command{
 
 // extractDocToken 从 URL 或直接的 token 中提取 document_id
 func extractDocToken(input string) (string, error) {
-	// 尝试匹配 docx URL
-	re := regexp.MustCompile(`/docx/([a-zA-Z0-9]+)`)
+	// 尝试匹配 docx 或 docs URL
+	re := regexp.MustCompile(`/(?:docx|docs)/([a-zA-Z0-9]+)`)
 	matches := re.FindStringSubmatch(input)
 	token := input
 	if len(matches) > 1 {
@@ -117,6 +135,48 @@ func extractDocToken(input string) (string, error) {
 	}
 
 	return token, nil
+}
+
+// exportOldDocAsMarkdown 旧版文档两步导出：先导出为 DOCX，再用 pandoc 转 Markdown
+func exportOldDocAsMarkdown(docToken string) (string, error) {
+	// 检查 pandoc 是否可用
+	pandocPath, err := exec.LookPath("pandoc")
+	if err != nil {
+		return "", fmt.Errorf("旧版文档需要 pandoc 转换，请先安装：brew install pandoc\n" +
+			"或手动导出：feishu-cli doc export-file %s --type docx -o doc.docx", docToken)
+	}
+
+	// 创建临时 DOCX 文件
+	tmpFile, err := os.CreateTemp("", "feishu-export-*.docx")
+	if err != nil {
+		return "", fmt.Errorf("创建临时文件失败: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
+
+	// 第一步：导出为 DOCX
+	fmt.Fprintf(os.Stderr, "旧版文档，正在导出为 DOCX...\n")
+	ticket, err := client.CreateExportTask(docToken, "doc", "docx")
+	if err != nil {
+		return "", fmt.Errorf("创建导出任务失败: %w", err)
+	}
+	fileToken, err := client.WaitExportTask(ticket, docToken, 60)
+	if err != nil {
+		return "", fmt.Errorf("等待导出任务失败: %w", err)
+	}
+	if err := client.DownloadExportFile(fileToken, tmpPath); err != nil {
+		return "", fmt.Errorf("下载 DOCX 失败: %w", err)
+	}
+
+	// 第二步：pandoc 转 Markdown
+	fmt.Fprintf(os.Stderr, "正在转换为 Markdown...\n")
+	out, err := exec.Command(pandocPath, "-f", "docx", "-t", "markdown", "--wrap=none", tmpPath).Output()
+	if err != nil {
+		return "", fmt.Errorf("pandoc 转换失败: %w", err)
+	}
+
+	return string(out), nil
 }
 
 func init() {
