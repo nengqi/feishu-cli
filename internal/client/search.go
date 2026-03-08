@@ -1,7 +1,9 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	larksearch "github.com/larksuite/oapi-sdk-go/v3/service/search/v2"
@@ -152,6 +154,139 @@ func SearchApps(opts SearchAppsOptions, userAccessToken string) (*SearchAppsResu
 		AppIDs:    resp.Data.Items,
 		PageToken: StringVal(resp.Data.PageToken),
 		HasMore:   BoolVal(resp.Data.HasMore),
+	}
+
+	return result, nil
+}
+
+// SearchDocWikiOptions 搜索文档和 Wiki 的选项
+type SearchDocWikiOptions struct {
+	Query    string   // 搜索关键词
+	Count    int      // 返回数量（0-50）
+	Offset   int      // 偏移量（offset + count < 200）
+	OwnerIDs []string // 文件所有者 Open ID 列表
+	ChatIDs  []string // 文件所在群 ID 列表
+	DocTypes []string // 文档类型（doc/docx/sheet/slides/bitable/mindnote/file/wiki/shortcut）
+}
+
+// SearchDocWikiResult 搜索文档和 Wiki 的结果
+type SearchDocWikiResult struct {
+	Total    int               // 总结果数
+	HasMore  bool              // 是否有更多
+	ResUnits []*DocWikiResUnit // 搜索结果列表
+}
+
+// DocWikiResUnit 文档搜索结果单元
+type DocWikiResUnit struct {
+	DocsToken string // 文档 Token
+	DocsType  string // 文档类型
+	Title     string // 标题
+	OwnerID   string // 所有者 ID
+	URL       string // 文档 URL（根据类型和 Token 拼接）
+}
+
+// docsTypeURLPath 文档类型到 URL 路径的映射
+var docsTypeURLPath = map[string]string{
+	"doc":      "docx",
+	"docx":     "docx",
+	"sheet":    "sheets",
+	"bitable":  "base",
+	"mindnote": "mindnotes",
+	"file":     "file",
+	"slides":   "slides",
+	"wiki":     "wiki",
+	"shortcut": "docx",
+}
+
+// buildDocsURL 根据文档类型和 Token 拼接飞书文档 URL
+func buildDocsURL(docsType, docsToken string) string {
+	path, ok := docsTypeURLPath[docsType]
+	if !ok {
+		path = docsType
+	}
+	return fmt.Sprintf("https://feishu.cn/%s/%s", path, docsToken)
+}
+
+// SearchDocWiki 搜索云文档
+// 使用 /open-apis/suite/docs-api/search/object 端点
+// 注意：此 API 需要 User Access Token
+func SearchDocWiki(opts SearchDocWikiOptions, userAccessToken string) (*SearchDocWikiResult, error) {
+	client, err := GetClient()
+	if err != nil {
+		return nil, err
+	}
+
+	// 构建请求体
+	body := map[string]any{
+		"search_key": opts.Query,
+	}
+	if opts.Count > 0 {
+		body["count"] = opts.Count
+	}
+	if opts.Offset > 0 {
+		body["offset"] = opts.Offset
+	}
+	if len(opts.OwnerIDs) > 0 {
+		body["owner_ids"] = opts.OwnerIDs
+	}
+	if len(opts.ChatIDs) > 0 {
+		body["chat_ids"] = opts.ChatIDs
+	}
+	if len(opts.DocTypes) > 0 {
+		body["docs_types"] = opts.DocTypes
+	}
+
+	apiPath := "/open-apis/suite/docs-api/search/object"
+
+	resp, err := client.Post(Context(), apiPath, body,
+		larkcore.AccessTokenTypeUser,
+		larkcore.WithUserAccessToken(userAccessToken))
+	if err != nil {
+		return nil, fmt.Errorf("搜索文档失败: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("搜索文档失败: HTTP %d, body: %s", resp.StatusCode, string(resp.RawBody))
+	}
+
+	// 解析响应
+	var apiResp struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			DocsEntities []struct {
+				DocsToken string `json:"docs_token"`
+				DocsType  string `json:"docs_type"`
+				Title     string `json:"title"`
+				OwnerID   string `json:"owner_id"`
+			} `json:"docs_entities"`
+			HasMore bool `json:"has_more"`
+			Total   int  `json:"total"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(resp.RawBody, &apiResp); err != nil {
+		return nil, fmt.Errorf("解析搜索响应失败: %w", err)
+	}
+
+	if apiResp.Code != 0 {
+		return nil, fmt.Errorf("搜索文档失败: code=%d, msg=%s", apiResp.Code, apiResp.Msg)
+	}
+
+	result := &SearchDocWikiResult{
+		Total:    apiResp.Data.Total,
+		HasMore:  apiResp.Data.HasMore,
+		ResUnits: make([]*DocWikiResUnit, 0, len(apiResp.Data.DocsEntities)),
+	}
+
+	for _, entity := range apiResp.Data.DocsEntities {
+		result.ResUnits = append(result.ResUnits, &DocWikiResUnit{
+			DocsToken: entity.DocsToken,
+			DocsType:  entity.DocsType,
+			Title:     entity.Title,
+			OwnerID:   entity.OwnerID,
+			URL:       buildDocsURL(entity.DocsType, entity.DocsToken),
+		})
 	}
 
 	return result, nil

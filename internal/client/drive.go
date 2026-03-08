@@ -67,6 +67,61 @@ func UploadMedia(filePath string, parentType string, parentNode string, fileName
 	return *resp.Data.FileToken, nil
 }
 
+// UploadMediaWithExtra uploads a file to Feishu drive with extra parameter.
+// extra 为 JSON 字符串，用于指定扩展信息（如 {"drive_route_token":"documentID"}）。
+func UploadMediaWithExtra(filePath, parentType, parentNode, fileName, extra string) (string, error) {
+	client, err := GetClient()
+	if err != nil {
+		return "", err
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("打开文件失败: %w", err)
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return "", fmt.Errorf("获取文件信息失败: %w", err)
+	}
+	fileSize := int(stat.Size())
+
+	if fileName == "" {
+		fileName = filepath.Base(filePath)
+	}
+
+	bodyBuilder := larkdrive.NewUploadAllMediaReqBodyBuilder().
+		FileName(fileName).
+		ParentType(parentType).
+		ParentNode(parentNode).
+		Size(fileSize).
+		File(file)
+
+	if extra != "" {
+		bodyBuilder = bodyBuilder.Extra(extra)
+	}
+
+	req := larkdrive.NewUploadAllMediaReqBuilder().
+		Body(bodyBuilder.Build()).
+		Build()
+
+	resp, err := client.Drive.Media.UploadAll(Context(), req)
+	if err != nil {
+		return "", fmt.Errorf("上传素材失败: %w", err)
+	}
+
+	if !resp.Success() {
+		return "", fmt.Errorf("上传素材失败: code=%d, msg=%s", resp.Code, resp.Msg)
+	}
+
+	if resp.Data.FileToken == nil {
+		return "", fmt.Errorf("上传成功但未返回文件 Token")
+	}
+
+	return *resp.Data.FileToken, nil
+}
+
 // DownloadMedia downloads a file from Feishu drive
 func DownloadMedia(fileToken string, outputPath string) error {
 	if err := validatePath(outputPath); err != nil {

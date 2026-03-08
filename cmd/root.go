@@ -77,6 +77,13 @@ var rootCmd = &cobra.Command{
 		case "init", "help", "completion", "version":
 			return nil
 		}
+		// auth status/logout 不需要配置（只操作本地 token 文件）
+		if cmd.Parent() != nil && cmd.Parent().Name() == "auth" {
+			switch cmd.Name() {
+			case "status", "logout":
+				return nil
+			}
+		}
 
 		if err := config.Init(cfgFile); err != nil {
 			return err

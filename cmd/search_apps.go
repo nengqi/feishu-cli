@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
+	"github.com/riba2534/feishu-cli/internal/auth"
 	"github.com/riba2534/feishu-cli/internal/client"
 	"github.com/riba2534/feishu-cli/internal/config"
 	"github.com/spf13/cobra"
@@ -43,18 +43,11 @@ var searchAppsCmd = &cobra.Command{
 		query := args[0]
 
 		// 获取 user access token
-		userAccessToken, _ := cmd.Flags().GetString("user-access-token")
-		if userAccessToken == "" {
-			userAccessToken = config.Get().UserAccessToken
-		}
-		if userAccessToken == "" {
-			userAccessToken = os.Getenv("FEISHU_USER_ACCESS_TOKEN")
-		}
-		if userAccessToken == "" {
-			return fmt.Errorf("缺少 User Access Token，请通过以下方式之一提供:\n" +
-				"  1. 命令行参数: --user-access-token <token>\n" +
-				"  2. 环境变量: export FEISHU_USER_ACCESS_TOKEN=<token>\n" +
-				"  3. 配置文件: user_access_token: <token>")
+		flagToken, _ := cmd.Flags().GetString("user-access-token")
+		cfg := config.Get()
+		userAccessToken, err := auth.ResolveUserAccessToken(flagToken, cfg.UserAccessToken, cfg.AppID, cfg.AppSecret, cfg.BaseURL)
+		if err != nil {
+			return err
 		}
 
 		// 获取其他参数

@@ -105,10 +105,11 @@ func calculateColumnWidths(headerContents []string, dataRows [][]string, cols in
 
 // MarkdownToBlock converts Markdown to Feishu blocks
 type MarkdownToBlock struct {
-	source     []byte
-	options    ConvertOptions
-	basePath   string // base path for resolving relative image paths
-	imageStats ImageStats
+	source       []byte
+	options      ConvertOptions
+	basePath     string // base path for resolving relative image paths
+	imageStats   ImageStats
+	imageSources []string // 记录每个 Image Block 对应的图片来源路径
 }
 
 // NewMarkdownToBlock creates a new converter
@@ -140,13 +141,6 @@ func FlattenBlockNodes(nodes []*BlockNode) []*larkdocx.Block {
 		}
 	}
 	return result
-}
-
-// ConvertResult contains converted blocks and table data
-type ConvertResult struct {
-	BlockNodes []*BlockNode // 支持嵌套层级的块树
-	TableDatas []*TableData // Table data in order of appearance, used for filling content
-	ImageStats ImageStats   // 图片处理统计
 }
 
 // ConvertWithTableData converts Markdown to Feishu blocks and returns table data for content filling
@@ -238,6 +232,7 @@ func (c *MarkdownToBlock) ConvertWithTableData() (*ConvertResult, error) {
 	}
 
 	result.ImageStats = c.imageStats
+	result.ImageSources = c.imageSources
 	return result, nil
 }
 
@@ -991,12 +986,13 @@ func (c *MarkdownToBlock) convertImage(node *ast.Image) (*larkdocx.Block, error)
 		return c.createImagePlaceholder(dest), nil
 	}
 
-	// 飞书 Open API 限制：DocX 文档无法通过 API 插入带图片的 Image 块。
-	// Drive upload API 不支持 DocX block ID 作为 parent_node（返回 "parent node not exist"），
-	// 且 replace_image 在 token 通过 documentID 上传时返回 "relation mismatch"。
-	// 因此创建空 Image 块作为占位符，用户可在飞书网页端手动添加图片。
-	// 参考：https://github.com/cso1z/Feishu-MCP/issues/32
-	c.imageStats.Skipped++
+	// 图片三步法上传：
+	// 1. 创建空 Image Block → 获得 imageBlockID
+	// 2. UploadMediaWithExtra(filePath, "docx_image", imageBlockID, ..., extra) → 获得 fileToken
+	// 3. ReplaceImage(documentID, imageBlockID, fileToken) → 图片显示
+	// 此处仅创建空 Image Block，记录图片来源路径，实际上传在 cmd 层完成。
+	c.imageStats.Total++
+	c.imageSources = append(c.imageSources, dest)
 	blockType := int(BlockTypeImage)
 	return &larkdocx.Block{
 		BlockType: &blockType,

@@ -4,7 +4,7 @@ description: >-
   飞书综合工具箱：电子表格、日历日程、任务管理、群聊管理、画板操作、PlantUML 图表、
   文件管理、素材上传下载、文档评论、知识库、搜索、用户通讯录、文档附件下载。
   当用户请求操作飞书表格、查看日历、创建任务、管理群聊、操作画板、生成 PlantUML、
-  管理文件、上传素材、查看评论、查看知识库、搜索消息、查询用户信息、查询部门、
+  管理文件、上传素材、查看评论、查看知识库、搜索消息、搜索文档、查询用户信息、查询部门、
   下载文档附件时使用。涵盖 feishu-cli 除文档读写导入导出和权限管理外的全部功能。
 argument-hint: <module> <command> [args]
 user-invocable: true
@@ -29,7 +29,7 @@ allowed-tools: Bash, Read, Write
 | 8 | 素材管理 | `media upload/download` | — |
 | 9 | 评论管理 | `comment list/add/delete/resolve/unresolve` + `comment reply` | — |
 | 10 | 知识库 | `wiki get/export/spaces/nodes/space-get` + `wiki member` | — |
-| 11 | 搜索 | `search messages/apps`（需 User Access Token） | `references/search-commands.md` |
+| 11 | 搜索 | `search messages/apps/docs`（需 User Access Token） | `references/search-commands.md` |
 | 12 | 用户和部门 | `user info/search/list` + `dept get/children` | — |
 | 13 | 附件下载 | `doc export` + `media download` 批量下载文档附件 | — |
 
@@ -448,7 +448,7 @@ feishu-cli wiki member remove <space_id> --member-type userid --member-id <USER_
 
 ## 11. 搜索
 
-搜索飞书消息和应用。**重要：需要 User Access Token**（非 App Access Token）。
+搜索飞书消息、应用和文档。**重要：需要 User Access Token**（非 App Access Token）。
 
 ### 常用命令
 
@@ -465,12 +465,35 @@ feishu-cli search messages "关键词" \
 
 # 搜索应用
 feishu-cli search apps "应用名" --user-access-token <token>
+
+# 搜索文档和 Wiki
+feishu-cli search docs "关键词" \
+  --user-access-token <token> \
+  [--doc-types DOC,SHEET,WIKI] \
+  [--folder-tokens fldcnxxxxxxxxxxxxxx] \
+  [--space-ids space_xxxxxxxxxxxx] \
+  [--creator-ids ou_xxx] \
+  [--only-title] \
+  [--sort-type EditedTime|CreatedTime|OpenedTime]
 ```
+
+### 文档搜索要点
+
+- **文档类型必须大写**：DOC, SHEET, BITABLE, MINDNOTE, FILE, WIKI, DOCX, FOLDER, CATALOG, SLIDES, SHORTCUT
+- **搜索范围**：可按文件夹、Wiki 空间、创建者筛选
+- **搜索模式**：默认全文搜索，加 `--only-title` 仅搜索标题
+- **排序方式**：EditedTime（最后编辑）、CreatedTime（创建时间）、OpenedTime（最后打开）
 
 ### User Access Token 说明
 
-- 通过 `--user-access-token` 参数或 `FEISHU_USER_ACCESS_TOKEN` 环境变量提供
+获取方式（按推荐优先级）：
+
+1. **`feishu-cli auth login`（推荐）**：一键 OAuth 登录，Token 自动保存到 `~/.feishu-cli/token.json`，过期自动刷新
+2. **`--user-access-token` 参数**：手动指定 Token
+3. **`FEISHU_USER_ACCESS_TOKEN` 环境变量**：通过环境变量提供
+
 - Token 有效期约 2 小时，Refresh Token 有效期 30 天
+- 使用 `auth login` 后无需每次手动传 Token，过期时自动用 Refresh Token 刷新
 - 不能使用 App Access Token（会报权限错误）
 
 **详细参考**：读取 `references/search-commands.md` 获取完整筛选参数说明。
