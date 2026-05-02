@@ -393,7 +393,7 @@ feishu-cli msg get om_xxx --card-content-type user -o json
 feishu-cli msg get om_xxx --card-content-type raw -o json
 ```
 
-> **`--card-content-type user|raw`** 同样适用于 `msg list` 和 `msg mget`，仅对 interactive 卡片生效，其他 msg_type 不受影响。`user` = userDSL（schema 2.0），`raw` = cardDSL（含默认补全字段）。
+> **`--card-content-type`** 接受 `user` / `user_card_content`（userDSL）/ `raw` / `raw_card_content`（cardDSL）/ 空（默认渲染版），短别名与完整 OAPI 名等价。同样适用于 `msg list` 和 `msg mget`，仅对 interactive 卡片生效，其他 msg_type 不受影响。`user_card_content` = userDSL（开发者构建卡片时的 schema 2.0 JSON）；`raw_card_content` = cardDSL（平台内部完整描述，含默认补全字段）。
 
 ### 查看消息已读情况
 
