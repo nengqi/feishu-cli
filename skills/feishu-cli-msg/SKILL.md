@@ -638,11 +638,20 @@ feishu-cli msg forward <message_id> \
 
 ```bash
 feishu-cli msg mget --message-ids om_xxx,om_yyy,om_zzz
+
+# interactive 卡片返回原始 schema 2.0 JSON（开发者视角的 userDSL，便于偷师）
+feishu-cli msg mget --message-ids om_xxx,om_yyy --card-content-type user
+
+# 返回平台内部完整 cardDSL（含默认补全字段，调试用）
+feishu-cli msg mget --message-ids om_xxx,om_yyy --card-content-type raw
 ```
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `--message-ids` | 消息 ID 列表（逗号分隔） | 必填 |
+| `--card-content-type` | interactive 卡片返回格式：`user`（userDSL）/ `raw`（cardDSL）/ 空（默认渲染版） | 空 |
+
+> **`--card-content-type` 同样适用于 `msg get` 和 `msg list`**：仅对 interactive 卡片消息生效，其他 msg_type 不受影响。`user` 拿到的是开发者构建卡片时的 schema 2.0 JSON，`raw` 是平台补齐默认字段后的完整描述。
 
 ## 下载消息资源
 

@@ -25,9 +25,6 @@ import (
 // 可拿到原始 JSON：
 //   - user_card_content：返回 userDSL（开发者构建卡片时的 schema 2.0 JSON，便于偷师/调试）
 //   - raw_card_content： 返回 cardDSL（平台内部完整描述，含默认补全字段）
-//
-// 文档来源（字节内部）：OAPI 卡片 2.0 兼容改造与返回结构优化技术方案
-// https://bytedance.larkoffice.com/docx/DxpUdWoFXosES6xCgqNcA62knWe
 const (
 	CardMsgContentTypeUser = "user_card_content"
 	CardMsgContentTypeRaw  = "raw_card_content"
@@ -198,7 +195,7 @@ type ListMessagesResult struct {
 }
 
 // ListMessages lists messages in a container (chat).
-// Note: The Feishu Go SDK (v3.5.3) incorrectly declares the List Messages API as
+// Note: The current Feishu Go SDK typed builder declares the List Messages API as
 // tenant_access_token only, but the API actually supports user_access_token as well.
 // When a user access token is provided, we use a raw HTTP request to bypass the SDK's
 // client-side token type validation. See: https://open.feishu.cn/document/server-docs/im-v1/message/list
