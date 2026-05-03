@@ -85,7 +85,7 @@ var listMessagesCmd = &cobra.Command{
 
 		if needFallback {
 			fmt.Fprintf(cmd.ErrOrStderr(), "[提示] bot 不在此群中，通过搜索方式获取消息...\n")
-			fallbackResult, fallbackErr := listMessagesViaSearch(containerID, pageSize, pageToken, token)
+			fallbackResult, fallbackErr := listMessagesViaSearch(containerID, pageSize, pageToken, token, cardContentType)
 			if fallbackErr != nil {
 				if err != nil {
 					return err

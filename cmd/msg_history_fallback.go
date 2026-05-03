@@ -9,7 +9,12 @@ import (
 
 // listMessagesViaSearch 通过搜索+逐条获取的方式获取消息列表
 // 当 ListMessages API 返回空结果（bot 不在群）时作为降级方案
-func listMessagesViaSearch(chatID string, pageSize int, pageToken string, userAccessToken string) (*client.ListMessagesResult, error) {
+//
+// cardContentType 透传到每条 GetMessage 调用：当上层 cobra 命令带
+// `--card-content-type user|raw` flag 时，fallback 路径同样请求原始
+// schema JSON，避免出现"主路径返回 raw、search 降级路径返回渲染版"的语义不一致。
+// 调用方未启用 flag 时传空字符串即可。
+func listMessagesViaSearch(chatID string, pageSize int, pageToken, userAccessToken, cardContentType string) (*client.ListMessagesResult, error) {
 	if pageSize <= 0 {
 		pageSize = 20
 	}
@@ -37,7 +42,7 @@ func listMessagesViaSearch(chatID string, pageSize int, pageToken string, userAc
 		PageToken: searchResult.PageToken,
 	}
 	for _, msgID := range searchResult.MessageIDs {
-		msgResult, err := client.GetMessage(msgID, userAccessToken, "")
+		msgResult, err := client.GetMessage(msgID, userAccessToken, cardContentType)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[警告] 获取消息 %s 失败: %v\n", msgID, err)
 			continue

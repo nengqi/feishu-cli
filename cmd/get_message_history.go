@@ -130,7 +130,9 @@ var getMessageHistoryCmd = &cobra.Command{
 
 		if needFallback {
 			fmt.Fprintf(cmd.ErrOrStderr(), "[提示] bot 不在此群中，通过搜索方式获取消息...\n")
-			fallbackResult, fallbackErr := listMessagesViaSearch(containerID, pageSize, pageToken, token)
+			// msg history 命令暂未暴露 --card-content-type flag，传空保持渲染版默认行为；
+			// 如未来给 msg history 也加 flag，把 resolveCardContentType 的结果接进来即可。
+			fallbackResult, fallbackErr := listMessagesViaSearch(containerID, pageSize, pageToken, token, "")
 			if fallbackErr != nil {
 				if err != nil {
 					return err
