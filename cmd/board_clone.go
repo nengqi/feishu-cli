@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/riba2534/feishu-cli/internal/client"
@@ -83,7 +84,15 @@ var boardCloneCmd = &cobra.Command{
 			}
 		}
 		// 类型统计 + 分桶
+		// svg/image 节点默认自动跳过：飞书 OpenAPI 限制（详见 issue #124）——
+		//   svg 节点的 svg.code 字段经 GET board nodes 读出来是 null（write-only），
+		//   image 节点的 image_token 跨画板不允许复用，sanitize 后直接重发 POST 会触发
+		//   服务端 2891001 internal error。
+		// 绕路：image → `board image` 拿源板渲染 PNG + `upload-image`；
+		//      svg   → `board export-code` 拉源 SVG + `svg-import`。
+		// 用户显式 --filter-types 包含 svg/image 时尊重（明知风险强制走）。
 		typeStat := map[string]int{}
+		autoSkipped := map[string]int{}
 		var shapeNodes []map[string]any
 		var connectorNodes []map[string]any
 		for _, node := range apiResp.Data.Nodes {
@@ -92,25 +101,36 @@ var boardCloneCmd = &cobra.Command{
 			if len(filterSet) > 0 && !filterSet[t] {
 				continue
 			}
+			if len(filterSet) == 0 && (t == "svg" || t == "image") {
+				autoSkipped[t]++
+				continue
+			}
 			if t == "connector" {
 				connectorNodes = append(connectorNodes, node)
 			} else {
 				shapeNodes = append(shapeNodes, node)
 			}
 		}
+		if len(autoSkipped) > 0 {
+			fmt.Fprintf(os.Stderr,
+				"[warn] 跳过 %d 个 svg/image 节点（飞书 API 限制，详见 issue #124）：%v\n"+
+					"        绕路：image 用 `board image <src>` + `upload-image`；svg 用 `board export-code <src>` + `svg-import`\n",
+				autoSkipped["svg"]+autoSkipped["image"], autoSkipped)
+		}
 
 		if dryRun {
 			summary := map[string]any{
-				"source":          srcID,
-				"target":          dstID,
-				"total_nodes":     len(apiResp.Data.Nodes),
-				"shape_to_clone":  len(shapeNodes),
-				"conn_to_clone":   len(connectorNodes),
-				"type_breakdown":  typeStat,
-				"batch_size":      batchSize,
-				"interval_secs":   intervalDur.Seconds(),
-				"filter_types":    filterTypes,
-				"dry_run":         true,
+				"source":           srcID,
+				"target":           dstID,
+				"total_nodes":      len(apiResp.Data.Nodes),
+				"shape_to_clone":   len(shapeNodes),
+				"conn_to_clone":    len(connectorNodes),
+				"type_breakdown":   typeStat,
+				"batch_size":       batchSize,
+				"interval_secs":    intervalDur.Seconds(),
+				"filter_types":     filterTypes,
+				"auto_skipped":     autoSkipped,
+				"dry_run":          true,
 			}
 			if output == "json" {
 				return printJSON(summary)
@@ -191,12 +211,13 @@ var boardCloneCmd = &cobra.Command{
 		}
 
 		result := map[string]any{
-			"source":           srcID,
-			"target":           dstID,
-			"shape_created":    shapeCreated,
+			"source":            srcID,
+			"target":            dstID,
+			"shape_created":     shapeCreated,
 			"connector_created": connCreated,
 			"connector_skipped": connSkipped,
-			"type_breakdown":   typeStat,
+			"auto_skipped":      autoSkipped,
+			"type_breakdown":    typeStat,
 		}
 		if output == "json" {
 			return printJSON(result)
