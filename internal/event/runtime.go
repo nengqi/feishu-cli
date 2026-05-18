@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -45,8 +46,11 @@ type ConsumeOptions struct {
 type Runtime struct {
 	opts ConsumeOptions
 
-	received atomic.Int64 // 已发出的事件计数（受 MaxEvents 约束）
-	stopOnce atomic.Bool  // 多触发源（signal/timeout/maxEvents）下保证 cancel 只触发一次
+	received atomic.Int64       // 已发出的事件计数（受 MaxEvents 约束）
+	stopOnce atomic.Bool        // 多触发源（signal/timeout/maxEvents）下保证 cancel 只触发一次
+	cancel   context.CancelFunc // emit 触发 max-events 退出时调用，由 Run 在派生 subCtx 后注入
+	reasonMu sync.Mutex         // 串行写入 reason 字段，避免 timeout/maxEvents 并发竞争
+	reason   string             // 多触发源时记录原因；Run 末尾读取
 }
 
 // NewRuntime 构造一个 consume runtime。
@@ -107,6 +111,7 @@ func (r *Runtime) Run(ctx context.Context) (reason string, err error) {
 	// 派生子上下文以便多触发源 cancel
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	r.cancel = cancel // emit 在 max-events 触发时通过 r.cancel 退出
 
 	// 超时
 	if r.opts.Timeout > 0 {
@@ -114,7 +119,7 @@ func (r *Runtime) Run(ctx context.Context) (reason string, err error) {
 			select {
 			case <-time.After(r.opts.Timeout):
 				if !r.stopOnce.Swap(true) {
-					reason = "timeout"
+					r.setReason("timeout")
 				}
 				cancel()
 			case <-subCtx.Done():
@@ -138,8 +143,12 @@ func (r *Runtime) Run(ctx context.Context) (reason string, err error) {
 		larkws.WithLogLevel(larkcore.LogLevelWarn),
 	)
 
-	// 触发 ready marker，外部 orchestrator 可阻塞 stderr 直到本行出现
-	fmt.Fprintf(r.opts.ErrOut, "[event] ready event_key=%s\n", r.opts.EventKey)
+	// 触发 ready marker：宣告进程初始化完成（WS 握手在 cli.Start 异步执行）。
+	// ★ marker 走真实 os.Stderr 而非 r.opts.ErrOut，避免 --quiet 时 ErrOut=io.Discard
+	//   导致 orchestrator 父进程永远等不到 marker。
+	// ★ 语义提示：父进程看到 marker 后**还需额外等 1-3s 让 WS 握手完成**才能可靠收到事件；
+	//   生产环境推荐父进程发"自检事件"+ 等待 echo 来确认链路通。
+	fmt.Fprintf(os.Stderr, "[event] ready event_key=%s (init complete; WS handshake in progress)\n", r.opts.EventKey)
 
 	// ws.Client.Start 阻塞，需要外部 cancel；包一层 goroutine 让 ctx 控制退出
 	errCh := make(chan error, 1)
@@ -149,21 +158,41 @@ func (r *Runtime) Run(ctx context.Context) (reason string, err error) {
 
 	select {
 	case <-subCtx.Done():
-		// 正常退出（signal/timeout/maxEvents）
-		if reason == "" {
+		// 正常退出（signal/timeout/maxEvents）— 优先用 emit/timeout goroutine 写入的 reason；
+		// 都没写时按计数兜底（仅作为防御性 fallback）。
+		final := r.getReason()
+		if final == "" {
 			if r.received.Load() >= int64(r.opts.MaxEvents) && r.opts.MaxEvents > 0 {
-				reason = "limit"
+				final = "limit"
 			} else {
-				reason = "signal"
+				final = "signal"
 			}
 		}
-		return reason, nil
+		return final, nil
 	case wsErr := <-errCh:
 		if wsErr != nil && !isContextCanceled(wsErr) {
 			return "error", fmt.Errorf("WebSocket 连接失败: %w", wsErr)
 		}
 		return "signal", nil
 	}
+}
+
+// setReason 串行写入 reason 字段。
+// 多个触发源（timeout goroutine / emit max-events）可能并发调用，
+// 需要 mutex 保证最先到达的 reason 不被覆盖。
+func (r *Runtime) setReason(reason string) {
+	r.reasonMu.Lock()
+	defer r.reasonMu.Unlock()
+	if r.reason == "" {
+		r.reason = reason
+	}
+}
+
+// getReason 读取最终 reason。
+func (r *Runtime) getReason() string {
+	r.reasonMu.Lock()
+	defer r.reasonMu.Unlock()
+	return r.reason
 }
 
 // emit 把一条事件输出到 stdout（NDJSON）+ 可选 output-dir 文件，并维护计数。
@@ -219,10 +248,14 @@ func (r *Runtime) emit(ev *larkevent.EventReq) error {
 	// 计数 + 触发 max-events 退出
 	n := r.received.Add(1)
 	if r.opts.MaxEvents > 0 && n >= int64(r.opts.MaxEvents) {
-		// 通过提前 return error 触发 ws 客户端关闭——但 SDK 没暴露 close 接口，
-		// 实际退出由 caller cancel ctx 完成。这里只标记 reason。
-		// 提示信息打到 stderr。
 		fmt.Fprintf(r.opts.ErrOut, "[event] reached max-events=%d\n", r.opts.MaxEvents)
+		// stopOnce 保证多触发源（timeout + max-events 同时撞）只 cancel 一次。
+		if !r.stopOnce.Swap(true) {
+			r.setReason("limit")
+			if r.cancel != nil {
+				r.cancel()
+			}
+		}
 	}
 	return nil
 }
