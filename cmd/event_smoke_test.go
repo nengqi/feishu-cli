@@ -23,9 +23,9 @@ import (
 // 跑法：go test -tags=smoke ./cmd -run TestSmokeEventConsume
 //
 // 验证内容：
-//   1. WebSocket 能成功连接（5 秒内打印 ready marker）
-//   2. bus.json 注册成功
-//   3. 5 秒后 ctx 取消，进程正常退出，bus.json 自动 unregister
+//  1. WebSocket 能成功连接（5 秒内打印 ready marker）
+//  2. bus.json 注册成功
+//  3. 5 秒后 ctx 取消，进程正常退出，bus.json 自动 unregister
 func TestSmokeEventConsume(t *testing.T) {
 	if os.Getenv("FEISHU_APP_ID") == "" || os.Getenv("FEISHU_APP_SECRET") == "" {
 		t.Skip("跳过 smoke 测试：需 FEISHU_APP_ID + FEISHU_APP_SECRET 真实凭证")

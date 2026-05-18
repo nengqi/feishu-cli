@@ -32,10 +32,10 @@ var profileRenameCmd = &cobra.Command{
 		}
 		if profileRenameJSON {
 			out := map[string]any{
-				"ok":   true,
-				"old":  oldName,
-				"new":  newName,
-				"dir":  dir,
+				"ok":  true,
+				"old": oldName,
+				"new": newName,
+				"dir": dir,
 			}
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(out)
 		}

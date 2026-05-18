@@ -15,9 +15,12 @@ import (
 //   - (default, message) → 消息层书签（最常见）
 //   - (thread, feed)     → topic-style 话题群的 feed 层书签
 //   - (msg_thread, feed) → 普通群消息线程的 feed 层书签
+//
 // 枚举值与服务端常量对齐（lark-cli shortcuts/im/helpers.go 实测）：
-//   ItemType: Default=0, Thread=4, MsgThread=11
-//   FlagType: Feed=1, Message=2
+//
+//	ItemType: Default=0, Thread=4, MsgThread=11
+//	FlagType: Feed=1, Message=2
+//
 // 不要按 0/1/2 顺序臆造——服务端会返回错误或操作到错误资源。
 const (
 	flagItemTypeDefault   = 0  // 普通消息

@@ -321,4 +321,3 @@ func outputPretty(results []checkResult) error {
 	fmt.Println("\n全部通过 ✓")
 	return nil
 }
-

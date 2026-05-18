@@ -430,12 +430,12 @@ func approvalTaskAPIToInfo(task *approvalTaskAPIInfo) *ApprovalTaskInfo {
 // CreateApprovalInstanceOptions represents options for creating an approval instance.
 // 创建审批实例参数（POST /open-apis/approval/v4/instances）
 type CreateApprovalInstanceOptions struct {
-	ApprovalCode string // 必填：审批定义 code
-	UserID       string // 必填：发起人 ID（open_id/user_id/union_id）
-	Form         string // 必填：表单数据 JSON 字符串
-	UserIDType   string // 可选：open_id / user_id / union_id，默认 open_id
-	DepartmentID string // 可选：发起人部门
-	OpenChatID   string // 可选：发送结果到的群聊
+	ApprovalCode           string          // 必填：审批定义 code
+	UserID                 string          // 必填：发起人 ID（open_id/user_id/union_id）
+	Form                   string          // 必填：表单数据 JSON 字符串
+	UserIDType             string          // 可选：open_id / user_id / union_id，默认 open_id
+	DepartmentID           string          // 可选：发起人部门
+	OpenChatID             string          // 可选：发送结果到的群聊
 	NodeApproverUserIDList json.RawMessage // 可选：节点指定审批人，JSON 原文
 	NodeCCUserIDList       json.RawMessage // 可选：节点指定抄送人，JSON 原文
 }
@@ -607,10 +607,10 @@ func CCApprovalInstance(opts CCApprovalInstanceOptions, userAccessToken string) 
 	}
 
 	body := map[string]any{
-		"approval_code":  opts.ApprovalCode,
-		"instance_code":  opts.InstanceCode,
-		"user_id":        opts.UserID,
-		"cc_user_ids":    opts.CCUserIDs,
+		"approval_code": opts.ApprovalCode,
+		"instance_code": opts.InstanceCode,
+		"user_id":       opts.UserID,
+		"cc_user_ids":   opts.CCUserIDs,
 	}
 	if opts.Comment != "" {
 		body["comment"] = opts.Comment

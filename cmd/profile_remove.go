@@ -57,7 +57,6 @@ var profileRemoveCmd = &cobra.Command{
 	},
 }
 
-
 func init() {
 	profileRemoveCmd.Flags().BoolVarP(&profileRemoveForce, "force", "f", false, "跳过二次确认")
 	profileRemoveCmd.Flags().BoolVar(&profileRemoveJSON, "json", false, "JSON 输出")
