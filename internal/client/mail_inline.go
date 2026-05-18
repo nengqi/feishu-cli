@@ -35,6 +35,15 @@ var imgSrcRegexp = regexp.MustCompile(`(?i)<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'
 // inlineURISchemeRegexp 检测带 scheme 的 URL（已经是 cid:/http(s):/data: 不再扫描）
 var inlineURISchemeRegexp = regexp.MustCompile(`(?i)^[a-z][a-z0-9+.\-]*:`)
 
+// isWindowsDrivePath 检测 Windows 驱动器路径（如 C:\file.png / d:/x），避免被 scheme 正则误判为 URI scheme
+func isWindowsDrivePath(s string) bool {
+	if len(s) < 2 || s[1] != ':' {
+		return false
+	}
+	c := s[0]
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+}
+
 // ScanInlineImagePaths 扫描 HTML body 中的 <img src="local-path">，仅返回本地路径
 // 已经是 cid:/http:/https:/data: 等 scheme 的会跳过
 // 同一文件路径只返回一次（去重）
@@ -60,8 +69,9 @@ func ScanInlineImagePaths(body string) []string {
 		if strings.HasPrefix(src, "//") {
 			continue
 		}
-		// 有 scheme（http:/https:/data:/cid: ...）跳过
-		if inlineURISchemeRegexp.MatchString(src) {
+		// 有 scheme（http:/https:/data:/cid: ...）跳过；
+		// 但 Windows 驱动器路径（C:\x.png）形似 scheme，先放行视为本地路径
+		if !isWindowsDrivePath(src) && inlineURISchemeRegexp.MatchString(src) {
 			continue
 		}
 		if seen[src] {
@@ -142,10 +152,19 @@ func guessMIMEByExt(name string) string {
 // LoadInlineImageBytes 读取本地文件并填充 FileName/Bytes/MIME
 // 用于 EML builder 构造 multipart/related part；调用方可选择只用 FileToken
 // 而不读盘（如已经走 drive 上传完毕、只需 cid 替换）
+//
+// 安全：拒绝路径遍历（`..` 片段）+ 限制 abs 必须落在 cwd 或 home 子树内，
+// 防止恶意 HTML `<img src="../../.ssh/id_rsa">` 把敏感文件作为附件外发。
 func LoadInlineImageBytes(ref *MailInlineImageRef) error {
+	if err := validateInlineImagePath(ref.LocalPath); err != nil {
+		return err
+	}
 	abs, err := filepath.Abs(ref.LocalPath)
 	if err != nil {
 		return fmt.Errorf("解析路径失败 %s: %w", ref.LocalPath, err)
+	}
+	if err := assertPathInSafeRoots(abs); err != nil {
+		return err
 	}
 	data, err := os.ReadFile(abs)
 	if err != nil {
@@ -159,4 +178,50 @@ func LoadInlineImageBytes(ref *MailInlineImageRef) error {
 		ref.MIME = guessMIMEByExt(ref.FileName)
 	}
 	return nil
+}
+
+// validateInlineImagePath 拒绝任何包含 ".." 片段的路径（防路径遍历）。
+// 注意：直接拒绝 `..` 比 `filepath.Clean` 后比较更严，避免 symlink 绕过。
+func validateInlineImagePath(p string) error {
+	if p == "" {
+		return fmt.Errorf("内嵌图片路径为空")
+	}
+	// 兼容 Windows 路径，统一替换分隔符再切分
+	norm := strings.ReplaceAll(p, "\\", "/")
+	for _, seg := range strings.Split(norm, "/") {
+		if seg == ".." {
+			return fmt.Errorf("内嵌图片路径不允许包含 `..`（防路径遍历）: %s", p)
+		}
+	}
+	return nil
+}
+
+// assertPathInSafeRoots 要求 abs 必须落在当前工作目录或 user home 子树内。
+// 在没有任一根可解析时（罕见）放行，避免误伤；但 `..` 已在前一步拦截。
+func assertPathInSafeRoots(abs string) error {
+	roots := make([]string, 0, 2)
+	if cwd, err := os.Getwd(); err == nil && cwd != "" {
+		if r, err2 := filepath.Abs(cwd); err2 == nil {
+			roots = append(roots, r)
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if r, err2 := filepath.Abs(home); err2 == nil {
+			roots = append(roots, r)
+		}
+	}
+	if len(roots) == 0 {
+		return nil
+	}
+	for _, r := range roots {
+		// 用 filepath.Rel 兼容跨平台分隔符；rel 不含 ".." 即在子树内
+		rel, err := filepath.Rel(r, abs)
+		if err != nil {
+			continue
+		}
+		if rel == "." || (!strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)) {
+			return nil
+		}
+	}
+	return fmt.Errorf("内嵌图片路径必须落在当前目录或 home 子树内: %s", abs)
 }

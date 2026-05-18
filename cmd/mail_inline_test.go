@@ -91,6 +91,55 @@ func TestBuildEMLBase64URL_WithInlineImages(t *testing.T) {
 	}
 }
 
+// TestBuildEMLBase64URL_MultipartCRLFSeparator 验证 RFC 2046 §5.1.1 要求：
+// 每个 boundary delimiter line 前必须有一个 CRLF（独立于 part body 内容）
+// 即 body 末尾必须出现 "\r\n\r\n--boundary" 而非紧贴 "<base64>\r\n--boundary"
+func TestBuildEMLBase64URL_MultipartCRLFSeparator(t *testing.T) {
+	input := mailMessageInput{
+		From:     "me@example.com",
+		To:       []string{"a@example.com"},
+		Subject:  "test",
+		BodyHTML: `<p>x</p><img src="cid:cid_a">`,
+		InlineImages: []inlineImagePart{
+			{CID: "cid_a", Filename: "a.png", MIME: "image/png", Bytes: []byte{0x89, 0x50, 0x4e, 0x47}},
+			{CID: "cid_b", Filename: "b.png", MIME: "image/png", Bytes: []byte{0x89, 0x50, 0x4e, 0x48}},
+		},
+	}
+	rawB64, err := buildEMLBase64URL(input)
+	if err != nil {
+		t.Fatalf("buildEMLBase64URL: %v", err)
+	}
+	decoded, _ := base64.RawURLEncoding.DecodeString(rawB64)
+	raw := string(decoded)
+	// boundary delimiter 之前必须是 "\r\n\r\n"（part body 结尾 CRLF + 空行）
+	// 数 "\r\n\r\n--" 的出现次数：应该 ≥ part 数（HTML + 2 inline = 3 个分隔）
+	cnt := strings.Count(raw, "\r\n\r\n--")
+	if cnt < 3 {
+		t.Errorf("RFC 2046 CRLF 分隔不足：got %d 次 `\\r\\n\\r\\n--`，want ≥3\nraw=%q", cnt, raw)
+	}
+}
+
+// TestBuildEMLBase64URL_InlineWithoutHTMLRejected 验证 InlineImages 非空但 HTML body 为空时报错
+// 防御性断言：避免静默丢弃 InlineImages
+func TestBuildEMLBase64URL_InlineWithoutHTMLRejected(t *testing.T) {
+	input := mailMessageInput{
+		From:     "me@example.com",
+		To:       []string{"a@example.com"},
+		Subject:  "test",
+		BodyText: "plain only",
+		InlineImages: []inlineImagePart{
+			{CID: "cid_a", Filename: "a.png", MIME: "image/png", Bytes: []byte{0x89}},
+		},
+	}
+	_, err := buildEMLBase64URL(input)
+	if err == nil {
+		t.Fatal("应当报错：InlineImages 非空但 BodyHTML 为空")
+	}
+	if !strings.Contains(err.Error(), "HTML") {
+		t.Errorf("错误信息未提到 HTML body 要求: %v", err)
+	}
+}
+
 // TestBuildEMLBase64URL_WithoutInline 没有内嵌图片时不应该走 multipart/related（保持原路径）
 func TestBuildEMLBase64URL_WithoutInline(t *testing.T) {
 	input := mailMessageInput{
