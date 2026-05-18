@@ -15,31 +15,25 @@ var searchCmd = &cobra.Command{
   docs      搜索文档和 Wiki
 
 注意:
-  搜索功能需要 User Access Token（用户授权令牌）。
-  请通过 --user-access-token 参数或 FEISHU_USER_ACCESS_TOKEN 环境变量提供。
+  搜索功能必须使用 User Access Token（用户授权令牌）。
+  推荐先用 auth check 预检 scope，再通过 Device Flow 登录。
 
 获取 User Access Token:
-  1. 在飞书开放平台创建应用并配置重定向 URL
-  2. 引导用户访问授权页面进行登录授权
-  3. 使用授权码换取 User Access Token
-  详情参考: https://open.feishu.cn/document/ukTMukTMukTM/ukDNz4SO0MjL5QzM/auth-v3/auth/authorize-user-access-token
+  feishu-cli auth check --scope "search:docs:read search:message"
+  feishu-cli auth login --domain search --recommend
 
 示例:
   # 搜索消息
-  feishu-cli search messages "关键词" --user-access-token <token>
-
-  # 搜索消息（使用环境变量）
-  export FEISHU_USER_ACCESS_TOKEN="u-xxx"
   feishu-cli search messages "关键词"
 
   # 搜索应用
-  feishu-cli search apps "关键词" --user-access-token <token>
+  feishu-cli search apps "关键词"
 
   # 搜索文档
-  feishu-cli search docs "产品需求" --user-access-token <token>
+  feishu-cli search docs "产品需求"
 
   # 搜索特定类型的文档
-  feishu-cli search docs "季度报告" --doc-types DOC,SHEET --user-access-token <token>`,
+  feishu-cli search docs "季度报告" --docs-types docx,sheet`,
 }
 
 func init() {

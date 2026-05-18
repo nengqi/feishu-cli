@@ -33,6 +33,27 @@ func TestValidateWorkerCount(t *testing.T) {
 	}
 }
 
+func TestValidateMarkdownEncoding(t *testing.T) {
+	tests := []struct {
+		name    string
+		content []byte
+		wantErr bool
+	}{
+		{name: "valid utf8", content: []byte("# 标题\n内容"), wantErr: false},
+		{name: "invalid utf8", content: []byte{0xff, 0xfe, 0xfd}, wantErr: true},
+		{name: "replacement char is valid utf8", content: []byte("乱码�内容"), wantErr: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateMarkdownEncoding(tt.content)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateMarkdownEncoding() error = %v, wantErr = %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestResolveImageSourceLocal(t *testing.T) {
 	baseDir := t.TempDir()
 	imagePath := filepath.Join(baseDir, "local-image.png")
@@ -143,6 +164,62 @@ func TestAppendVideoTasksIncludesNestedVideosInTreeOrder(t *testing.T) {
 	}
 }
 
+func TestAppendImageTasksIncludesNestedImagesInTreeOrder(t *testing.T) {
+	topImage := blockNodeWithType(converter.BlockTypeImage)
+	grid := &converter.BlockNode{
+		Block: blockWithType(converter.BlockTypeGrid),
+		Children: []*converter.BlockNode{
+			blockNodeWithType(converter.BlockTypeImage),
+			{Block: blockWithType(converter.BlockTypeText)},
+		},
+	}
+
+	tasks := appendImageTasks(nil,
+		[]*converter.BlockNode{topImage, grid},
+		[]string{"top-id", "grid-id"},
+		map[int][]createdBlockNode{
+			1: {
+				{node: grid.Children[0], blockID: "nested-image-id"},
+				{node: grid.Children[1], blockID: "nested-text-id"},
+			},
+		},
+		[]string{"./top.png", "./nested.png"},
+		"/tmp",
+	)
+
+	if len(tasks) != 2 {
+		t.Fatalf("len(tasks) = %d, want 2", len(tasks))
+	}
+	wantIDs := []string{"top-id", "nested-image-id"}
+	wantSources := []string{"./top.png", "./nested.png"}
+	for i := range tasks {
+		if tasks[i].imageBlockID != wantIDs[i] || tasks[i].source != wantSources[i] {
+			t.Fatalf("task[%d] = {id:%q source:%q}, want {id:%q source:%q}",
+				i, tasks[i].imageBlockID, tasks[i].source, wantIDs[i], wantSources[i])
+		}
+	}
+}
+
+func TestAppendImageTasksSkipsTokenImages(t *testing.T) {
+	tokenImage := imageNode("img_existing")
+	localImage := blockNodeWithType(converter.BlockTypeImage)
+
+	tasks := appendImageTasks(nil,
+		[]*converter.BlockNode{tokenImage, localImage},
+		[]string{"existing-id", "local-id"},
+		nil,
+		[]string{"./local.png"},
+		"/tmp",
+	)
+
+	if len(tasks) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
+	}
+	if tasks[0].imageBlockID != "local-id" || tasks[0].source != "./local.png" {
+		t.Fatalf("task = {id:%q source:%q}, want local image binding", tasks[0].imageBlockID, tasks[0].source)
+	}
+}
+
 func TestProcessVideoTaskRejectsFilesOverUploadAllLimit(t *testing.T) {
 	baseDir := t.TempDir()
 	videoPath := filepath.Join(baseDir, "large.mp4")
@@ -183,7 +260,23 @@ func videoNode(name string) *converter.BlockNode {
 	}
 }
 
+func blockNodeWithType(blockType converter.BlockType) *converter.BlockNode {
+	return &converter.BlockNode{Block: blockWithType(blockType)}
+}
+
 func blockWithType(blockType converter.BlockType) *larkdocx.Block {
 	bt := int(blockType)
 	return &larkdocx.Block{BlockType: &bt}
+}
+
+func imageNode(token string) *converter.BlockNode {
+	blockType := int(converter.BlockTypeImage)
+	return &converter.BlockNode{
+		Block: &larkdocx.Block{
+			BlockType: &blockType,
+			Image: &larkdocx.Image{
+				Token: &token,
+			},
+		},
+	}
 }

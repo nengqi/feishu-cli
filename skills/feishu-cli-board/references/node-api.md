@@ -10,7 +10,7 @@
 | 获取节点 | GET `/open-apis/board/v1/whiteboards/{id}/nodes` | 获取全部节点 |
 | 删除节点 | DELETE `/open-apis/board/v1/whiteboards/{id}/nodes/{node_id}` | 单个删除 |
 | 批量删除 | DELETE `/open-apis/board/v1/whiteboards/{id}/nodes/batch_delete` | 批量删除 |
-| 修改节点 | -- | **不支持**，需 redraw（重建画板） |
+| 修改节点 | -- | **无 PATCH**；用 create+delete，或 `board update --overwrite` |
 
 - 频率限制：50 req/s
 - 请求体格式：`{"nodes": [...]}`
@@ -37,8 +37,8 @@ feishu-cli board create-notes <whiteboard_id> '<json_array>' --source-type conte
 
 ```bash
 # Mermaid 内容导入
-feishu-cli board import <whiteboard_id> --source-type content \
-  -c "graph TD; A-->B-->C" --syntax mermaid
+feishu-cli board import <whiteboard_id> "graph TD; A-->B-->C" \
+  --source-type content --syntax mermaid --diagram-type flowchart
 
 # Mermaid 文件导入
 feishu-cli board import <whiteboard_id> diagram.mmd --syntax mermaid
@@ -47,7 +47,7 @@ feishu-cli board import <whiteboard_id> diagram.mmd --syntax mermaid
 feishu-cli board import <whiteboard_id> diagram.puml --syntax plantuml
 
 # 指定图表类型
-feishu-cli board import <whiteboard_id> diagram.mmd --syntax mermaid --diagram-type 6
+feishu-cli board import <whiteboard_id> diagram.mmd --syntax mermaid --diagram-type flowchart
 ```
 
 ### board nodes

@@ -6,7 +6,7 @@ description: >-
   "协作者"、"full_access"、"转移所有权"时使用。
 argument-hint: <doc_token> --perm <view|edit|full_access>
 user-invocable: true
-allowed-tools: Bash, Read
+allowed-tools: Bash(feishu-cli perm:*), Bash(feishu-cli auth:*), Read
 ---
 
 # 飞书权限管理技能
@@ -35,10 +35,13 @@ allowed-tools: Bash, Read
 | scope | 说明 |
 |-------|------|
 | `docs:permission.member:create` | 添加协作者 |
-| `docs:permission.member:readonly` | 查看协作者列表 |
+| `docs:permission.member:retrieve` | 查看协作者列表 |
+| `docs:permission.member:update` | 更新协作者权限 |
 | `docs:permission.member:delete` | 删除协作者 |
-| `docs:permission.setting:write` | 更新公开权限、密码管理 |
-| `drive:drive` | 云空间文件操作（含转移所有权） |
+| `docs:permission.member:transfer` | 转移所有权 |
+| `docs:permission.member:auth` | 检查用户权限 |
+| `docs:permission.setting:read` / `docs:permission.setting:readonly` | 读取公开权限设置 |
+| `docs:permission.setting:write_only` | 更新公开权限、密码管理 |
 
 ## 快速开始
 

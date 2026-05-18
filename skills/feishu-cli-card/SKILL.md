@@ -13,7 +13,7 @@ description: >-
   --msg-type interactive 发送（msg 使用 App Token，无需 auth login）。
 argument-hint: <场景描述>
 user-invocable: true
-allowed-tools: Bash, Read, Write
+allowed-tools: Bash(feishu-cli msg:*), Bash(feishu-cli media:*), Read, Write
 ---
 
 # 飞书 V2 卡片构造技能

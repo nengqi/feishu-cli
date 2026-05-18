@@ -15,7 +15,7 @@ description: >-
   使用 App Token（应用身份），无需 auth login。
 argument-hint: "[whiteboard_id]"
 user-invocable: true
-allowed-tools: Bash, Read, Write
+allowed-tools: Bash(feishu-cli board:*), Bash(feishu-cli doc:*), Bash(feishu-cli media:*), Bash(python3:*), Bash(whiteboard-cli:*), Read, Write
 ---
 
 # 飞书画板 · 5 路径画图指南
@@ -83,7 +83,7 @@ BOARD_ID=$(feishu-cli doc add-board $DOC_ID -o json | jq -r .whiteboard_id)
 feishu-cli board import $BOARD_ID flowchart.mmd --syntax mermaid
 
 # 从字符串导入
-feishu-cli board import $BOARD_ID "graph TD; A-->B-->C" --source-type content --syntax mermaid
+feishu-cli board import $BOARD_ID "graph TD; A-->B-->C" --source-type content --syntax mermaid --diagram-type flowchart
 
 # PlantUML
 feishu-cli board import $BOARD_ID diagram.puml --syntax plantuml
@@ -366,4 +366,4 @@ feishu-cli board create-notes $BOARD_ID /tmp/connectors.json -o json
 | "克隆这张画板" | `feishu-cli board clone <src> <dst>` |
 | "把这张图片放到画板" | `feishu-cli board upload-image $BOARD photo.png` |
 | "检查画板质量" | `feishu-cli board lint $BOARD` |
-| "把画板里的 SVG 拉回本地" | `feishu-cli board export-code $BOARD --output design.svg --merge` |
+| "把画板里的 SVG 拉回本地" | `feishu-cli board export-code $BOARD --output-path design.svg --merge` |

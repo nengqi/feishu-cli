@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -11,11 +10,6 @@ import (
 	"github.com/riba2534/feishu-cli/internal/client"
 	"github.com/riba2534/feishu-cli/internal/config"
 	"github.com/spf13/cobra"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/extension"
-	east "github.com/yuin/goldmark/extension/ast"
-	textpkg "github.com/yuin/goldmark/text"
 )
 
 var sheetImportMDCmd = &cobra.Command{
@@ -226,6 +220,7 @@ type sheetImportMDResult struct {
 }
 
 const maxSheetImportMDCells = 5000
+const maxSheetImportMDCellChars = 50000
 
 func validateSheetImportMDSize(rows [][]string) error {
 	if len(rows) == 0 || len(rows[0]) == 0 {
@@ -235,100 +230,110 @@ func validateSheetImportMDSize(rows [][]string) error {
 	if cells > maxSheetImportMDCells {
 		return fmt.Errorf("表格单次写入单元格数 %d（%d 行 × %d 列）超过飞书 API 上限 %d，请拆分", cells, len(rows), len(rows[0]), maxSheetImportMDCells)
 	}
+	for r, row := range rows {
+		for c, cell := range row {
+			if len([]rune(cell)) > maxSheetImportMDCellChars {
+				return fmt.Errorf("单元格 R%dC%d 字符数 %d 超过飞书 API 上限 %d，请拆分或精简内容", r+1, c+1, len([]rune(cell)), maxSheetImportMDCellChars)
+			}
+		}
+	}
 	return nil
 }
 
 // extractGFMTables 从 Markdown 文本中解析所有 GFM 表格，按出现顺序返回。
 func extractGFMTables(text string) [][][]string {
 	var tables [][][]string
+	lines := strings.Split(text, "\n")
+	inFence := false
+	var fenceChar byte
+	fenceLen := 0
 
-	md := goldmark.New(goldmark.WithExtensions(extension.GFM))
-	source := []byte(text)
-	doc := md.Parser().Parse(textpkg.NewReader(source))
+	for i := 0; i < len(lines)-1; i++ {
+		line := lines[i]
 
-	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
+		if inFence {
+			if isClosingMarkdownFence(line, fenceChar, fenceLen) {
+				inFence = false
+				fenceChar = 0
+				fenceLen = 0
+			}
+			continue
 		}
 
-		table, ok := n.(*east.Table)
-		if !ok {
-			return ast.WalkContinue, nil
+		if ch, n, ok := openingMarkdownFence(line); ok {
+			inFence = true
+			fenceChar = ch
+			fenceLen = n
+			continue
 		}
 
-		rows := tableToRows(table, source)
+		if isIndentedCodeLine(line) || isIndentedCodeLine(lines[i+1]) ||
+			!looksLikeTableLine(line) || !isSeparatorLine(lines[i+1]) {
+			continue
+		}
+
+		header := splitTableRow(line)
+		separator := splitTableRow(lines[i+1])
+		if len(header) == 0 || len(header) != len(separator) {
+			continue
+		}
+
+		rows := [][]string{header}
+		i += 2
+		for i < len(lines) && !isIndentedCodeLine(lines[i]) && looksLikeTableLine(lines[i]) && !isSeparatorLine(lines[i]) {
+			rows = append(rows, splitTableRow(lines[i]))
+			i++
+		}
+		i--
+
 		if len(rows) > 0 {
-			tables = append(tables, rows)
+			tables = append(tables, normalizeTableRows(rows))
 		}
-		return ast.WalkSkipChildren, nil
-	})
-
+	}
 	return tables
 }
 
-func tableToRows(table *east.Table, source []byte) [][]string {
-	var rows [][]string
-	colCount := len(table.Alignments)
-	if colCount == 0 {
-		return nil
+func openingMarkdownFence(line string) (byte, int, bool) {
+	trimmed := strings.TrimLeft(line, " ")
+	if len(line)-len(trimmed) > 3 || len(trimmed) < 3 {
+		return 0, 0, false
 	}
-
-	for row := table.FirstChild(); row != nil; row = row.NextSibling() {
-		switch r := row.(type) {
-		case *east.TableHeader:
-			if r.ChildCount() != colCount {
-				return nil
-			}
-			rows = append(rows, tableRowToCells(r, source, colCount))
-		case *east.TableRow:
-			rows = append(rows, tableRowToCells(r, source, colCount))
-		}
+	ch := trimmed[0]
+	if ch != '`' && ch != '~' {
+		return 0, 0, false
 	}
-	return rows
+	n := countLeadingByte(trimmed, ch)
+	if n < 3 {
+		return 0, 0, false
+	}
+	return ch, n, true
 }
 
-func tableRowToCells(row ast.Node, source []byte, colCount int) []string {
-	cells := make([]string, 0, colCount)
-	for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
-		if tc, ok := cell.(*east.TableCell); ok {
-			cells = append(cells, strings.TrimSpace(tableCellText(tc, source)))
-		}
+func isClosingMarkdownFence(line string, fenceChar byte, fenceLen int) bool {
+	trimmed := strings.TrimLeft(line, " ")
+	if len(line)-len(trimmed) > 3 || len(trimmed) < fenceLen {
+		return false
 	}
-	return padRow(cells, colCount)
+	if trimmed[0] != fenceChar {
+		return false
+	}
+	n := countLeadingByte(trimmed, fenceChar)
+	return n >= fenceLen && strings.TrimSpace(trimmed[n:]) == ""
 }
 
-func tableCellText(node ast.Node, source []byte) string {
-	var buf bytes.Buffer
-	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-		switch n := child.(type) {
-		case *ast.Text:
-			buf.WriteString(unescapeMDTableCellText(string(n.Segment.Value(source))))
-		case *ast.String:
-			buf.Write(n.Value)
-		case *ast.RawHTML:
-			raw := strings.TrimSpace(strings.ToLower(rawHTMLText(n, source)))
-			if raw == "<br>" || raw == "<br/>" || raw == "<br />" {
-				buf.WriteByte('\n')
-			}
-		default:
-			buf.WriteString(tableCellText(child, source))
-		}
+func countLeadingByte(s string, ch byte) int {
+	n := 0
+	for n < len(s) && s[n] == ch {
+		n++
 	}
-	return buf.String()
+	return n
 }
 
-func rawHTMLText(node *ast.RawHTML, source []byte) string {
-	var buf bytes.Buffer
-	for i := 0; i < node.Segments.Len(); i++ {
-		segment := node.Segments.At(i)
-		buf.Write(segment.Value(source))
+func isIndentedCodeLine(line string) bool {
+	if strings.HasPrefix(line, "\t") {
+		return true
 	}
-	return buf.String()
-}
-
-func unescapeMDTableCellText(s string) string {
-	replacer := strings.NewReplacer(`\|`, "|", `\\`, `\`)
-	return replacer.Replace(s)
+	return len(line)-len(strings.TrimLeft(line, " ")) >= 4
 }
 
 // looksLikeTableLine 行里至少一个 "|"（已 unescape \|）且非空。
@@ -418,8 +423,27 @@ func splitTableRow(line string) []string {
 	return cells
 }
 
-// padRow 把行扩展到 colCount 长（短的补 ""，长的截断）。
+func normalizeTableRows(rows [][]string) [][]string {
+	maxCols := 0
+	for _, row := range rows {
+		if len(row) > maxCols {
+			maxCols = len(row)
+		}
+	}
+	for i, row := range rows {
+		rows[i] = padRow(row, maxCols)
+	}
+	return rows
+}
+
+// padRow 把行扩展到 colCount 长；长行保持原样，避免静默截断数据。
 func padRow(row []string, colCount int) []string {
+	if colCount <= 0 {
+		return []string{}
+	}
+	if len(row) > colCount {
+		return append([]string(nil), row...)
+	}
 	out := make([]string, colCount)
 	for i := 0; i < colCount; i++ {
 		if i < len(row) {

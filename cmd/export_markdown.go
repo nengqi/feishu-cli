@@ -23,6 +23,7 @@ var exportMarkdownCmd = &cobra.Command{
 
 使用 --download-images 可同时下载文档中的图片和画板（画板自动导出为 PNG），
 通过 --assets-dir 指定资源保存目录（默认 ./assets）。
+内嵌飞书电子表格默认会自动展开为 Markdown 表格，可用 --expand-sheets=false 保留为 <sheet/> 引用。
 
 示例:
   feishu-cli doc export ABC123def456
@@ -56,6 +57,7 @@ var exportMarkdownCmd = &cobra.Command{
 		highlight, _ := cmd.Flags().GetBool("highlight")
 
 		expandMentions, _ := cmd.Flags().GetBool("expand-mentions")
+		expandSheets, _ := cmd.Flags().GetBool("expand-sheets")
 
 		// Convert to Markdown
 		cfg := config.Get()
@@ -68,6 +70,7 @@ var exportMarkdownCmd = &cobra.Command{
 			FrontMatter:     frontMatter,
 			Highlight:       highlight,
 			ExpandMentions:  expandMentions,
+			ExpandSheets:    expandSheets,
 		}
 
 		var conv *converter.BlockToMarkdown
@@ -133,5 +136,6 @@ func init() {
 	exportMarkdownCmd.Flags().Bool("front-matter", false, "添加 YAML front matter (标题和文档 ID)")
 	exportMarkdownCmd.Flags().Bool("highlight", false, "保留文本颜色和背景色 (输出为 HTML span)")
 	exportMarkdownCmd.Flags().Bool("expand-mentions", true, "展开 @用户为友好格式 (需要 contact:user.base:readonly 权限)")
+	exportMarkdownCmd.Flags().Bool("expand-sheets", true, "自动展开内嵌飞书电子表格为 Markdown 表格")
 	exportMarkdownCmd.Flags().String("user-access-token", "", "User Access Token（用于访问无 App 权限的文档，自动从 auth login 读取）")
 }

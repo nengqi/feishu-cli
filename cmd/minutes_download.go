@@ -198,7 +198,7 @@ var minutesDownloadCmd = &cobra.Command{
 func init() {
 	minutesCmd.AddCommand(minutesDownloadCmd)
 	minutesDownloadCmd.Flags().String("minute-tokens", "", "妙记 token 列表，逗号分隔（最多 50 条）")
-	minutesDownloadCmd.Flags().String("output", "", "输出路径（文件或目录）")
+	minutesDownloadCmd.Flags().StringP("output", "o", "", "输出路径（文件或目录）")
 	minutesDownloadCmd.Flags().Bool("overwrite", false, "覆盖已存在文件")
 	minutesDownloadCmd.Flags().Bool("url-only", false, "只打印下载 URL，不下载")
 	minutesDownloadCmd.Flags().String("user-access-token", "", "User Access Token（覆盖登录态）")

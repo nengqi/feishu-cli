@@ -286,7 +286,7 @@ feishu-cli msg send \
 
 ### 方式三：完整 Card JSON（最灵活）
 
-**v1 格式**：
+**v1 格式（历史兼容）**：
 
 ```json
 {

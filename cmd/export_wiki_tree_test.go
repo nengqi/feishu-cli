@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/riba2534/feishu-cli/internal/client"
+	"github.com/spf13/cobra"
 )
 
 func TestSanitizeWikiTitle(t *testing.T) {
@@ -175,5 +178,36 @@ func TestTruncate(t *testing.T) {
 				t.Errorf("truncate(%q, %d) = %q, want %q", tt.s, tt.n, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestWikiTreeNodeAssetsDirUsesPerDocumentDirectory(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("download-images", true, "")
+	cmd.Flags().String("assets-dir", "backup/assets", "")
+
+	job := treeJob{
+		Node:       &client.WikiNode{ObjType: "docx"},
+		OutputPath: filepath.Join("backup", "Team", "Plan.md"),
+	}
+
+	got := wikiTreeNodeAssetsDir(cmd, "backup", job)
+	want := filepath.Join("backup", "assets", "Team", "Plan")
+	if got != want {
+		t.Fatalf("wikiTreeNodeAssetsDir() = %q, want %q", got, want)
+	}
+}
+
+func TestWikiTreeNodeAssetsDirSkipsWhenDisabled(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("download-images", false, "")
+	cmd.Flags().String("assets-dir", "assets", "")
+
+	got := wikiTreeNodeAssetsDir(cmd, "backup", treeJob{
+		Node:       &client.WikiNode{ObjType: "docx"},
+		OutputPath: filepath.Join("backup", "Plan.md"),
+	})
+	if got != "" {
+		t.Fatalf("wikiTreeNodeAssetsDir() = %q, want empty", got)
 	}
 }

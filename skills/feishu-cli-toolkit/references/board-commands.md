@@ -20,16 +20,16 @@ feishu-cli board import <whiteboard_id> diagram.puml
 feishu-cli board import <whiteboard_id> diagram.mmd --syntax mermaid
 
 # 指定图表类型
-feishu-cli board import <whiteboard_id> diagram.puml --diagram-type 2
+feishu-cli board import <whiteboard_id> diagram.puml --diagram-type sequence
 ```
 
 ### 从内容直接导入
 
 ```bash
-feishu-cli board import <whiteboard_id> \
+feishu-cli board import <whiteboard_id> "graph TD; A-->B" \
   --source-type content \
-  -c "graph TD; A-->B" \
-  --syntax mermaid
+  --syntax mermaid \
+  --diagram-type flowchart
 ```
 
 ### 导入参数
@@ -37,24 +37,24 @@ feishu-cli board import <whiteboard_id> \
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `--syntax` | `plantuml` 或 `mermaid` | `plantuml` |
-| `--diagram-type` | 图表类型编号（见下表） | `0`（auto） |
+| `--diagram-type` | 图表类型字符串：auto/mindmap/sequence/activity/class/er/flowchart/state/component | `auto` |
 | `--style` | `board` 或 `classic` | `board` |
 | `--source-type` | `file` 或 `content` | `file` |
-| `-c, --content` | 当 source-type=content 时的图表内容 | — |
+| `<source>` | source-type=content 时直接传图表源码；source-type=file 时传文件路径 | 必填 |
 
 ### diagram-type 映射
 
-| 编号 | 类型 | 说明 |
-|------|------|------|
-| 0 | auto | 自动检测 |
-| 1 | mindmap | 思维导图 |
-| 2 | sequence | 时序图 |
-| 3 | activity | 活动图 |
-| 4 | class | 类图 |
-| 5 | er | ER 图 |
-| 6 | flowchart | 流程图 |
-| 7 | state | 状态图 |
-| 8 | component | 组件图 |
+| CLI 值 | 说明 |
+|--------|------|
+| auto | 自动检测 |
+| mindmap | 思维导图 |
+| sequence | 时序图 |
+| activity | 活动图 |
+| class | 类图 |
+| er | ER 图 |
+| flowchart | 流程图 |
+| state | 状态图 |
+| component | 组件图 |
 
 ## 获取画板节点
 
@@ -148,6 +148,6 @@ feishu-cli board create-notes <whiteboard_id> \
 | `board import` CLI 命令 | 单独导入画板时 API 返回 404（API 限制） |
 | Mermaid 花括号 | `{text}` 被识别为菱形节点，需避免 |
 | Mermaid par 语法 | `par...and...end` 飞书不支持 |
-| 画板无 PATCH/DELETE API | 修改节点需重建画板（redraw 模式） |
+| 画板无 PATCH API；已有 DELETE | 修改节点用 create+delete，或 `board update --overwrite` 先创建新节点再删除旧节点 |
 | 画板图片裁切 | API 不支持 `clip`/`mask`/`crop_rect`/`border_radius` 等属性，需预处理图片 |
 | 画板图片 token | 每个节点必须独占 token，不可多节点复用同一 token |

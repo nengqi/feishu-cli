@@ -272,10 +272,12 @@ func addContentMarkdown(documentID, blockID, contentData, basePath string, uploa
 	}
 
 	// 递归创建嵌套子块（如嵌套列表）
+	nestedCreatedByTop := map[int][]createdBlockNode{}
 	for idx, children := range nodeChildrenMap {
 		if idx < len(createdBlockIDs) {
 			parentID := createdBlockIDs[idx]
-			nestedCount, _, nestedErr := createNestedChildren(documentID, parentID, children, userAccessToken)
+			nestedCount, nestedCreated, nestedErr := createNestedChildren(documentID, parentID, children, userAccessToken)
+			nestedCreatedByTop[idx] = nestedCreated
 			if nestedErr != nil {
 				fmt.Fprintf(os.Stderr, "[Warning] 嵌套子块创建失败: %v\n", nestedErr)
 			}
@@ -321,6 +323,19 @@ func addContentMarkdown(documentID, blockID, contentData, basePath string, uploa
 		}
 	}
 
+	// 上传并替换 Markdown 图片。Convert 阶段先创建 Image Block，占位块 ID 需要在创建后回填 token。
+	imageTasks := appendImageTasks(nil, result.BlockNodes, createdBlockIDs, nestedCreatedByTop, result.ImageSources, basePath)
+	imageSuccess := 0
+	imageFailed := 0
+	for _, task := range imageTasks {
+		res := processImageTask(documentID, task, false, userAccessToken)
+		if res.success {
+			imageSuccess++
+		} else {
+			imageFailed++
+		}
+	}
+
 	// 输出结果
 	if output == "json" {
 		return printJSON(map[string]any{
@@ -329,6 +344,9 @@ func addContentMarkdown(documentID, blockID, contentData, basePath string, uploa
 			"table_total":   tableSuccess + tableFailed,
 			"table_success": tableSuccess,
 			"table_failed":  tableFailed,
+			"image_total":   imageSuccess + imageFailed,
+			"image_success": imageSuccess,
+			"image_failed":  imageFailed,
 		})
 	}
 
@@ -336,6 +354,10 @@ func addContentMarkdown(documentID, blockID, contentData, basePath string, uploa
 	tableTotal := tableSuccess + tableFailed
 	if tableTotal > 0 {
 		fmt.Printf("  表格: %d/%d 成功\n", tableSuccess, tableTotal)
+	}
+	imageTotal := imageSuccess + imageFailed
+	if imageTotal > 0 {
+		fmt.Printf("  图片: %d/%d 成功\n", imageSuccess, imageTotal)
 	}
 	return nil
 }

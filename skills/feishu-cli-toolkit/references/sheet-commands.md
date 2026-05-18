@@ -29,6 +29,35 @@ feishu-cli sheet write <token> "Sheet1!A1:B2" --data '[["姓名","年龄"],["张
 feishu-cli sheet append <token> "Sheet1!A:B" --data '[["新数据1","新数据2"]]'
 ```
 
+## Markdown 互转
+
+### 从 Markdown 表格创建电子表格
+
+```bash
+# 默认提取第一张 GFM 表格，标题使用文件名
+feishu-cli sheet import-md report.md
+
+# 指定标题、目标文件夹
+feishu-cli sheet import-md report.md --title "Q1 销售数据" --folder <folder_token>
+
+# 文件中有多张表时选择第 N 张（0-based）
+feishu-cli sheet import-md report.md --table-index 1
+```
+
+`sheet import-md` 只提取 GFM 表格，忽略对齐标记；不规则行会按最长行补空字符串。适合把报告里的数据表转成可在线筛选、排序的飞书电子表格。
+
+### 导出电子表格为 Markdown
+
+```bash
+# 导出所有可见工作表
+feishu-cli sheet export <spreadsheet_token> --format markdown -o report.md
+
+# 只导出指定工作表；md 是 markdown 的别名
+feishu-cli sheet export <spreadsheet_token> --format md --sheet-id <sheet_id> -o sheet.md
+```
+
+Markdown 导出直接读取工作表数据并写出 Markdown 表格；不指定 `--sheet-id` 时导出所有可见工作表。XLSX/CSV 导出仍使用飞书异步导出任务，CSV 必须指定 `--sheet-id`。
+
 ## V3 API 命令
 
 ### 读取（纯文本/富文本）
@@ -47,21 +76,23 @@ feishu-cli sheet read-rich <token> <sheet_id> "Sheet1!A1:C10"
 feishu-cli sheet write-rich <token> <sheet_id> --data-file data.json
 ```
 
-data.json 格式示例（三维数组）：
+data.json 格式示例（value_ranges JSON 数组）：
 ```json
-{
-  "range": "Sheet1!A1:B2",
-  "values": [
-    [
-      [{"type": "text", "text": {"text": "加粗文本"}, "textStyle": {"bold": true}}],
-      [{"type": "text", "text": {"text": "普通文本"}}]
-    ],
-    [
-      [{"type": "link", "link": {"text": "飞书", "url": "https://feishu.cn"}}],
-      [{"type": "formula", "formula": {"text": "=SUM(A1:A10)"}}]
+[
+  {
+    "range": "Sheet1!A1:B2",
+    "values": [
+      [
+        [{"type": "text", "text": {"text": "加粗文本"}, "textStyle": {"bold": true}}],
+        [{"type": "text", "text": {"text": "普通文本"}}]
+      ],
+      [
+        [{"type": "link", "link": {"text": "飞书", "url": "https://feishu.cn"}}],
+        [{"type": "formula", "formula": {"text": "=SUM(A1:A10)"}}]
+      ]
     ]
-  ]
-}
+  }
+]
 ```
 
 ### V3 富文本元素类型
@@ -81,12 +112,14 @@ data.json 格式示例（三维数组）：
 
 ### 插入/追加/清除（V3）
 
+`insert` / `append-rich` 的 `--data-file` 读取的是单个范围的三维 `values` 数组；不要传 `write-rich` 的 value_ranges 包装对象。
+
 ```bash
 # 在指定位置插入数据
-feishu-cli sheet insert <token> <sheet_id> --data-file data.json
+feishu-cli sheet insert <token> <sheet_id> "Sheet1!A1:B2" --data-file data.json
 
 # 追加富文本
-feishu-cli sheet append-rich <token> <sheet_id> --data-file data.json
+feishu-cli sheet append-rich <token> <sheet_id> "Sheet1!A1:B2" --data-file data.json
 
 # 清除范围内容
 feishu-cli sheet clear <token> <sheet_id> "Sheet1!A1:C10"
@@ -114,7 +147,7 @@ feishu-cli sheet style <token> "Sheet1!A1:C3" \
   --bold \
   --italic \
   --bg-color "#FFFF00" \
-  --fg-color "#FF0000"
+  --fore-color "#FF0000"
 ```
 
 ## 合并/拆分单元格
@@ -127,8 +160,8 @@ feishu-cli sheet unmerge <token> "Sheet1!A1:B2"
 ## 查找替换
 
 ```bash
-feishu-cli sheet find <token> <sheet_id> --find "关键词"
-feishu-cli sheet replace <token> <sheet_id> --find "旧文本" --replace "新文本"
+feishu-cli sheet find <token> <sheet_id> "关键词" --range "A1:C10"
+feishu-cli sheet replace <token> <sheet_id> "旧文本" "新文本" --range "A1:C10"
 ```
 
 ## 工作表管理
@@ -143,21 +176,25 @@ feishu-cli sheet copy-sheet <token> <sheet_id> [--title "副本"]
 ## 单元格图片
 
 ```bash
-# 需要先通过 media upload 获取 image_token
-feishu-cli sheet image <token> "Sheet1!A1" --image-token <token>
+# 需要先通过 media upload 获取 image token
+feishu-cli sheet image add <token> <sheet_id> --token img_xxx --range "A1:A1" --width 200 --height 150
+feishu-cli sheet image list <token> <sheet_id>
+feishu-cli sheet image delete <token> <sheet_id> <float_image_id>
 ```
 
 ## 工作表保护
 
 ```bash
-feishu-cli sheet protect <token> <sheet_id> [--lock/--unlock]
+feishu-cli sheet protect <token> <sheet_id> --dimension ROWS --start 0 --end 5
+feishu-cli sheet protect <token> <sheet_id> --dimension COLUMNS --start 0 --end 3
+feishu-cli sheet unprotect <token> <protect_id>
 ```
 
 > 已知问题：V2 API 可能返回 "invalid operation"。
 
 ## User Access Token 支持
 
-所有 30 个 sheet 命令均支持 `--user-access-token` 参数，用于以用户身份访问无 App 权限但用户有权限的表格。
+所有 sheet 命令均支持 `--user-access-token` 参数，用于以用户身份访问无 App 权限但用户有权限的表格。
 
 ```bash
 # 通过参数指定

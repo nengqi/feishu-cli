@@ -1,18 +1,18 @@
 ---
 name: feishu-cli-read
 description: >-
-  只读操作，不修改文档内容。读取飞书云文档或知识库内容，分析文档结构。支持 docx（新版文档）和 sheet（电子表格）
-  两种知识库文档类型。当用户请求"查看"、"阅读"、"分析"、"读取"、
+  只读操作，不修改文档内容。读取飞书云文档、知识库内容或电子表格，分析文档结构。
+  支持普通 docx、普通 sheet、知识库 docx 和知识库 sheet。当用户请求"查看"、"阅读"、"分析"、"读取"、
   "打开"、"read"、"view" 飞书文档、知识库或电子表格时使用。支持通过文档 ID、知识库 Token 或 URL 读取。
   Markdown 作为中间格式存储在 /tmp 目录。如需写入请使用 feishu-cli-write。
-argument-hint: <document_id|node_token|url>
+argument-hint: <document_id|node_token|spreadsheet_token|url>
 user-invocable: true
-allowed-tools: Bash, Read, Grep
+allowed-tools: Bash(feishu-cli doc:*), Bash(feishu-cli wiki:*), Bash(feishu-cli sheet:*), Bash(feishu-cli auth:*), Read, Grep
 ---
 
 # 飞书文档阅读技能
 
-从飞书云文档或知识库读取内容，转换为 Markdown 格式后进行分析和展示。支持 docx（新版文档）和 sheet（电子表格）两种知识库文档类型。
+从飞书云文档、电子表格或知识库读取内容，转换为 Markdown 格式后进行分析和展示。普通电子表格使用 `sheet export --format markdown`，知识库 sheet 使用 `wiki export`。
 
 ## 前置条件
 
@@ -50,6 +50,8 @@ allowed-tools: Bash, Read, Grep
    feishu-cli doc export <document_id> --output /tmp/feishu_doc.md --download-images --assets-dir /tmp/feishu_assets
    ```
 
+   文档内嵌电子表格块默认会自动展开为 Markdown 表格，便于直接阅读和分析；如果要保留 `<sheet .../>` 标签用于 roundtrip，追加 `--expand-sheets=false`。
+
    `doc export` 会自动解析 User Access Token（如已登录），解析优先级：
 
    1. `--user-access-token` 命令行参数
@@ -73,6 +75,14 @@ allowed-tools: Bash, Read, Grep
    feishu-cli wiki export <node_token> --output /tmp/feishu_wiki.md --download-images --assets-dir /tmp/feishu_assets
    ```
 
+   **普通电子表格**:
+
+   ```bash
+   feishu-cli sheet export <spreadsheet_token> --format markdown --output /tmp/feishu_sheet.md
+   ```
+
+   不指定 `--sheet-id` 时会读取所有可见工作表；只看单个工作表时加 `--sheet-id <sheet_id>`。
+
    **重要**：务必使用 `--download-images` 参数下载文档中的图片到本地，否则只能看到 `feishu://media/<token>` 引用，无法理解图片内容。
 
    **可选参数**：
@@ -81,6 +91,7 @@ allowed-tools: Bash, Read, Grep
    - `--front-matter`：在 Markdown 顶部添加 YAML front matter（含标题和文档 ID）
    - `--highlight`：保留文本颜色和背景色（输出为 HTML `<span>` 标签）
    - `--expand-mentions`：展开 @用户为友好格式（默认开启，需要 contact:user.base:readonly 权限）
+   - `--expand-sheets`：展开文档内嵌电子表格为 Markdown 表格（默认开启；设为 `false` 时保留 `<sheet .../>` 标签）
 
 3. **读取文本内容**
 
@@ -122,8 +133,10 @@ allowed-tools: Bash, Read, Grep
 | URL 格式                                  | 类型     | 命令          |
 | ----------------------------------------- | -------- | ------------- |
 | `https://xxx.feishu.cn/docx/<id>`         | 普通文档 | `doc export`  |
+| `https://xxx.feishu.cn/sheets/<token>`    | 普通电子表格 | `sheet export --format markdown` |
 | `https://xxx.feishu.cn/wiki/<token>`      | 知识库（docx/sheet） | `wiki export` |
 | `https://xxx.larkoffice.com/docx/<id>`    | 普通文档 | `doc export`  |
+| `https://xxx.larkoffice.com/sheets/<token>` | 普通电子表格 | `sheet export --format markdown` |
 | `https://xxx.larkoffice.com/wiki/<token>` | 知识库（docx/sheet） | `wiki export` |
 
 ## 示例
@@ -136,6 +149,9 @@ allowed-tools: Bash, Read, Grep
 # 读取知识库文档
 /feishu-read <node_token>
 /feishu-read https://xxx.feishu.cn/wiki/<node_token>
+
+# 读取普通电子表格为 Markdown
+feishu-cli sheet export <spreadsheet_token> --format markdown -o /tmp/feishu_sheet.md
 ```
 
 ## 导出格式说明
@@ -147,6 +163,7 @@ allowed-tools: Bash, Read, Grep
 | Callout 高亮块     | `> [!NOTE]`、`> [!WARNING]` 等 6 种 GitHub-style alert |
 | 块级/行内公式      | `$formula$`（LaTeX 格式）                              |
 | 画板 (Board)       | `[画板/Whiteboard](feishu://board/...)` 链接           |
+| 电子表格块 (Sheet) | 默认展开为 Markdown 表格；关闭 `--expand-sheets` 时输出 `<sheet .../>` |
 | ISV 块 (Mermaid)   | 画板链接                                               |
 | QuoteContainer     | `>` 引用语法（支持嵌套）                               |
 | AddOns/SyncedBlock | 透明展开子块内容                                       |

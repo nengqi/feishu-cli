@@ -101,16 +101,16 @@ var boardCloneCmd = &cobra.Command{
 
 		if dryRun {
 			summary := map[string]any{
-				"source":          srcID,
-				"target":          dstID,
-				"total_nodes":     len(apiResp.Data.Nodes),
-				"shape_to_clone":  len(shapeNodes),
-				"conn_to_clone":   len(connectorNodes),
-				"type_breakdown":  typeStat,
-				"batch_size":      batchSize,
-				"interval_secs":   intervalDur.Seconds(),
-				"filter_types":    filterTypes,
-				"dry_run":         true,
+				"source":         srcID,
+				"target":         dstID,
+				"total_nodes":    len(apiResp.Data.Nodes),
+				"shape_to_clone": len(shapeNodes),
+				"conn_to_clone":  len(connectorNodes),
+				"type_breakdown": typeStat,
+				"batch_size":     batchSize,
+				"interval_secs":  intervalDur.Seconds(),
+				"filter_types":   filterTypes,
+				"dry_run":        true,
 			}
 			if output == "json" {
 				return printJSON(summary)
@@ -191,12 +191,12 @@ var boardCloneCmd = &cobra.Command{
 		}
 
 		result := map[string]any{
-			"source":           srcID,
-			"target":           dstID,
-			"shape_created":    shapeCreated,
+			"source":            srcID,
+			"target":            dstID,
+			"shape_created":     shapeCreated,
 			"connector_created": connCreated,
 			"connector_skipped": connSkipped,
-			"type_breakdown":   typeStat,
+			"type_breakdown":    typeStat,
 		}
 		if output == "json" {
 			return printJSON(result)

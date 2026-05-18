@@ -9,7 +9,7 @@ description: >-
   "复制多维表格"时使用。
 argument-hint: "[base_token] [table_id]"
 user-invocable: true
-allowed-tools: Bash, Read, Write
+allowed-tools: Bash(feishu-cli bitable:*), Bash(feishu-cli auth:*), Read, Write
 ---
 
 # 飞书多维表格（Bitable / Base）
@@ -99,7 +99,7 @@ feishu-cli bitable view rename --base-token xxx --table-id tblxxx --view-id view
 # 视图配置 get/set（6 种 × 2 = 12 命令）— set 方法是 PUT（全量替换）
 feishu-cli bitable view view-filter-get        --base-token xxx --table-id tblxxx --view-id viewxxx
 feishu-cli bitable view view-filter-set        --base-token xxx --table-id tblxxx --view-id viewxxx \
-  --config '{"conjunction":"and","conditions":[{"field_id":"fld1","operator":"is","value":["进行中"]}]}'
+  --config '{"filter_info":{"conjunction":"and","conditions":[{"field_id":"fld1","operator":"is","value":["进行中"]}]}}'
 
 feishu-cli bitable view view-sort-get          --base-token xxx --table-id tblxxx --view-id viewxxx
 # sort/group 的 --config 可传数组，自动包装为 {"sort_config":[...]} / {"group_config":[...]}
@@ -113,15 +113,15 @@ feishu-cli bitable view view-group-set         --base-token xxx --table-id tblxx
 feishu-cli bitable view view-visible-fields-get --base-token xxx --table-id tblxxx --view-id viewxxx
 # visible-fields 必须传完整对象（不会自动包装）
 feishu-cli bitable view view-visible-fields-set --base-token xxx --table-id tblxxx --view-id viewxxx \
-  --config '{"visible_fields":["fld1","fld2"]}'
+  --config '{"view_field":[{"field_id":"fld1","visible":true},{"field_id":"fld2","visible":true}]}'
 
 feishu-cli bitable view view-timebar-get       --base-token xxx --table-id tblxxx --view-id viewxxx
 feishu-cli bitable view view-timebar-set       --base-token xxx --table-id tblxxx --view-id viewxxx \
-  --config '{"start_field_id":"fld_start","end_field_id":"fld_end","title_field_id":"fld_title"}'
+  --config '{"timebar":{"start_field_id":"fld_start","end_field_id":"fld_end","title_field_id":"fld_title"}}'
 
 feishu-cli bitable view view-card-get          --base-token xxx --table-id tblxxx --view-id viewxxx
 feishu-cli bitable view view-card-set          --base-token xxx --table-id tblxxx --view-id viewxxx \
-  --config '{"cover_field_id":"fld1","display_fields":["fld2","fld3"]}'
+  --config '{"card":{"cover_field_id":"fld1","display_fields":["fld2","fld3"]}}'
 ```
 
 > **视图配置自动包装规则**（减少用户样板）：
@@ -218,7 +218,7 @@ feishu-cli bitable workflow list --base-token xxx --page-token TOKEN
 BASE_TOKEN=$(feishu-cli bitable create --name "任务跟踪" -o json | jq -r '.base.base_token')
 
 # 2. 创建数据表
-TABLE_ID=$(feishu-cli bitable table create --base-token $BASE_TOKEN --name "待办" -o json | jq -r '.table.table_id')
+TABLE_ID=$(feishu-cli bitable table create --base-token $BASE_TOKEN --name "待办" | jq -r '.table.table_id')
 
 # 3. 添加字段
 feishu-cli bitable field create --base-token $BASE_TOKEN --table-id $TABLE_ID --config '{
@@ -229,7 +229,7 @@ feishu-cli bitable field create --base-token $BASE_TOKEN --table-id $TABLE_ID --
 feishu-cli bitable record batch-create --base-token $BASE_TOKEN --table-id $TABLE_ID --config-file records.json
 
 # 5. 创建自定义视图
-VIEW_ID=$(feishu-cli bitable view create --base-token $BASE_TOKEN --table-id $TABLE_ID --name "进行中" --view-type grid -o json | jq -r '.view.view_id')
+VIEW_ID=$(feishu-cli bitable view create --base-token $BASE_TOKEN --table-id $TABLE_ID --name "进行中" --view-type grid | jq -r '.view.view_id')
 
 # 6. 配置视图过滤
 feishu-cli bitable view view-filter-set --base-token $BASE_TOKEN --table-id $TABLE_ID --view-id $VIEW_ID --config '{

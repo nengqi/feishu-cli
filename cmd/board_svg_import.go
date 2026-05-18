@@ -122,10 +122,10 @@ var boardSVGImportCmd = &cobra.Command{
 			result := map[string]any{
 				"whiteboard_id": whiteboardID,
 				"x":             x, "y": y, "width": width, "height": height,
-				"z_index":       zIndex,
-				"svg_code_len":  len(svgCode),
-				"node":          node,
-				"dry_run":       true,
+				"z_index":      zIndex,
+				"svg_code_len": len(svgCode),
+				"node":         node,
+				"dry_run":      true,
 			}
 			if output == "json" {
 				return printJSON(result)

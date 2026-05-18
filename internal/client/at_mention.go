@@ -3,7 +3,9 @@ package client
 import "regexp"
 
 // atMentionFixRe 匹配 AI 常见的 @ 标签变体：
-//   <at id=ou_xxx>  /  <at open_id="ou_xxx">  /  <at user_id=ou_xxx/>
+//
+//	<at id=ou_xxx>  /  <at open_id="ou_xxx">  /  <at user_id=ou_xxx/>
+//
 // 统一规范化为 <at user_id="ou_xxx"> 形式。
 // <at email="..."/> 不在匹配范围内，会原样保留 —— 飞书 API 原生支持邮箱艾特。
 var atMentionFixRe = regexp.MustCompile(`<at\s+(id|open_id|user_id)=("?)([^"\s/>]+)"?\s*/?>`)

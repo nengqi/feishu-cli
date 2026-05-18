@@ -14,7 +14,7 @@ description: >-
   本 skill 与老的 file/media/comment 命令组并存，提供更强能力（User Token 支持、
   异步 resume、富文本评论），基础场景仍可用 file/media。
 user-invocable: true
-allowed-tools: Bash, Read
+allowed-tools: Bash(feishu-cli drive:*), Bash(feishu-cli auth:*), Read
 ---
 
 # 飞书云盘增强（Drive）
@@ -26,7 +26,7 @@ allowed-tools: Bash, Read
 
 ## 前置条件
 
-- **认证**：所有 `drive` 命令默认走 **User Access Token**（执行 `feishu-cli auth login` 登录）
+- **认证**：多数 `drive` 命令需要 **User Access Token**（执行 `feishu-cli auth login` 登录）。`pull/push/status` 支持 fallback，未显式传 User Token 时可回退 App Token。
 - **预检**：`feishu-cli auth check --scope "drive:file:upload"` 可验证 scope
 
 ## 命令速查
@@ -96,13 +96,12 @@ feishu-cli drive import --file report.docx --type docx
 feishu-cli drive import --file data.xlsx --type sheet --folder-token fldxxx
 feishu-cli drive import --file bigsheet.csv --type bitable --folder-token fldxxx
 
-# 大文件（>20MB）自动走分块媒体上传
-feishu-cli drive import --file big.docx --type docx
+# 注意：docx/sheet 导入上限 20MB，bitable 上限 100MB
 ```
 
 **关键技术点**：
 - 走 **官方 `/medias/upload_all` 端点**（`parent_type=ccm_import_open` + `extra`），**不在用户云盘留下中间文件**（这是和老 `doc import-file` 的核心区别）
-- 格式特定大小限制：docx 20MB / sheet 20MB / bitable 100MB
+- 格式特定大小限制：docx 20MB / sheet 20MB / bitable 100MB。docx/sheet 超过 20MB 会直接报错，不会自动绕过格式限制。
 - 有界轮询 30×2s，超时返回 `next_command`
 
 ### 5. 移动（文件夹自动轮询）
@@ -284,8 +283,8 @@ feishu-cli drive add-comment \
 # drive import 走临时媒体（不污染云盘）
 feishu-cli drive import --file report.docx --type docx --folder-token fldxxx
 
-# 大文件（>20MB）同样走分块
-feishu-cli drive import --file big_sheet.xlsx --type sheet --folder-token fldxxx
+# 20MB 以上表格文件请导入为 bitable（上限 100MB）
+feishu-cli drive import --file big_sheet.xlsx --type bitable --folder-token fldxxx
 ```
 
 ## 与老命令的对照
@@ -312,13 +311,13 @@ feishu-cli drive import --file big_sheet.xlsx --type sheet --folder-token fldxxx
 | `drive move` | `space:document:move` |
 | `drive add-comment` | `docs:document.comment:create`、`docs:document.comment:write_only`、`docx:document:readonly`（若 docx）、`wiki:node:read`（若 wiki URL） |
 | `drive task-result` | `drive:drive.metadata:readonly` |
-| `drive pull` / `status` | `drive:drive` 或 `drive:drive:readonly`（列举文件夹）、`drive:file:download` |
-| `drive push` | `drive:drive` 或 `drive:drive:readonly`、`drive:file:upload`、`space:folder:create`；带 `--delete-remote` 还需要文件删除权限 |
+| `drive pull` / `status` | `drive:drive.metadata:readonly`、`drive:file:download` |
+| `drive push` | `drive:drive.metadata:readonly`、`drive:file:upload`、`space:folder:create`；带 `--delete-remote` 还需要文件删除权限 |
 | `drive search` | `search:docs:read`（必需 User Token） |
 
 ## 注意事项
 
-- **默认 User Access Token**：所有 `drive` 命令未登录时会统一提示 `feishu-cli auth login`
+- **Token 策略**：大多数 `drive` 命令优先 User Token；`pull/push/status` 可回退 App Token。搜索类 `drive search` 必须 User Token。
 - **SSRF 防护**：下载 URL 会被校验，拒绝 localhost / 回环 IP / 内网段 / 链路本地
 - **重定向策略**：下载 HTTP 重定向最多 5 次，禁止 HTTPS → HTTP 降级
 - **大文件分块阈值**：固定 20MB，超过自动切分片

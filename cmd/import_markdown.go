@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	larkdocx "github.com/larksuite/oapi-sdk-go/v3/service/docx/v1"
 	"github.com/riba2534/feishu-cli/internal/client"
@@ -30,7 +32,7 @@ const maxInlineVideoSize = 20 * 1024 * 1024
 func syncPrintf(format string, a ...any) {
 	printMu.Lock()
 	defer printMu.Unlock()
-	fmt.Printf(format, a...)
+	fmt.Fprintf(os.Stderr, format, a...)
 }
 
 // segment 表示 Markdown 中的一个片段
@@ -281,6 +283,7 @@ type videoResult struct {
 // importStats 记录导入统计信息
 type importStats struct {
 	mu              sync.Mutex
+	progress        io.Writer
 	totalBlocks     int
 	diagramTotal    int
 	diagramSuccess  int
@@ -304,6 +307,14 @@ type importStats struct {
 	phase1Duration  time.Duration
 	phase2Duration  time.Duration
 	phase3Duration  time.Duration
+}
+
+func (s *importStats) progressf(format string, a ...any) {
+	w := s.progress
+	if w == nil {
+		w = os.Stdout
+	}
+	fmt.Fprintf(w, format, a...)
 }
 
 var importMarkdownCmd = &cobra.Command{
@@ -338,7 +349,12 @@ var importMarkdownCmd = &cobra.Command{
 		tableWorkers, _ := cmd.Flags().GetInt("table-workers")
 		imageWorkers, _ := cmd.Flags().GetInt("image-workers")
 		diagramRetries, _ := cmd.Flags().GetInt("diagram-retries")
+		output, _ := cmd.Flags().GetString("output")
 		userAccessToken := resolveOptionalUserToken(cmd)
+		var progressOut io.Writer = os.Stdout
+		if output == "json" {
+			progressOut = cmd.ErrOrStderr()
+		}
 
 		// 向后兼容: 如果用户使用了旧的 --mermaid-workers/--mermaid-retries，覆盖新值
 		if cmd.Flags().Changed("mermaid-workers") {
@@ -372,6 +388,9 @@ var importMarkdownCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("读取文件失败: %w", err)
 		}
+		if err := validateMarkdownEncoding(content); err != nil {
+			return err
+		}
 
 		basePath := filepath.Dir(filePath)
 		markdownText := string(content)
@@ -390,7 +409,7 @@ var importMarkdownCmd = &cobra.Command{
 			if svgCount > 0 {
 				parts = append(parts, fmt.Sprintf("%d 个 SVG", svgCount))
 			}
-			fmt.Printf("[信息] 检测到 %s 图表\n", strings.Join(parts, ", "))
+			fmt.Fprintf(progressOut, "[信息] 检测到 %s 图表\n", strings.Join(parts, ", "))
 		}
 
 		// If no document ID, create new document
@@ -415,8 +434,8 @@ var importMarkdownCmd = &cobra.Command{
 				return fmt.Errorf("文档已创建但未返回ID")
 			}
 			documentID = *doc.DocumentId
-			fmt.Printf("已创建文档: %s\n", documentID)
-			fmt.Printf("链接: https://feishu.cn/docx/%s\n\n", documentID)
+			fmt.Fprintf(progressOut, "已创建文档: %s\n", documentID)
+			fmt.Fprintf(progressOut, "链接: https://feishu.cn/docx/%s\n\n", documentID)
 		}
 
 		// 解析 Markdown 为片段
@@ -427,10 +446,11 @@ var importMarkdownCmd = &cobra.Command{
 			mermaidCount:  mermaidCount,
 			plantumlCount: plantumlCount,
 			svgCount:      svgCount,
+			progress:      progressOut,
 		}
 
 		// === 阶段 1/3: 顺序创建文档块 ===
-		fmt.Println("=== 阶段 1/3: 创建文档块 ===")
+		fmt.Fprintln(progressOut, "=== 阶段 1/3: 创建文档块 ===")
 		phase1Start := time.Now()
 
 		dTasks, tTasks, iTasks, vTasks, err := phase1CreateBlocks(documentID, segments, uploadImages, basePath, stats, verbose, userAccessToken)
@@ -450,7 +470,7 @@ var importMarkdownCmd = &cobra.Command{
 		if len(vTasks) > 0 {
 			phase1Summary += fmt.Sprintf(", 待上传视频: %d", len(vTasks))
 		}
-		fmt.Println(phase1Summary + "\n")
+		fmt.Fprintln(progressOut, phase1Summary+"\n")
 
 		// === 阶段 2/3: 并发处理 ===
 		if len(dTasks) > 0 || len(tTasks) > 0 || len(iTasks) > 0 || len(vTasks) > 0 {
@@ -458,7 +478,7 @@ var importMarkdownCmd = &cobra.Command{
 			if stats.totalBlocks > 30 {
 				cooldown := 5 * time.Second
 				if verbose {
-					fmt.Printf("等待 API 配额恢复 (%.0fs)...\n", cooldown.Seconds())
+					fmt.Fprintf(progressOut, "等待 API 配额恢复 (%.0fs)...\n", cooldown.Seconds())
 				}
 				time.Sleep(cooldown)
 			}
@@ -471,7 +491,7 @@ var importMarkdownCmd = &cobra.Command{
 				phase2Header += fmt.Sprintf(", 视频×%d", imageWorkers)
 			}
 			phase2Header += ") ==="
-			fmt.Println(phase2Header)
+			fmt.Fprintln(progressOut, phase2Header)
 			phase2Start := time.Now()
 
 			failedDiagrams := phase2ConcurrentProcess(documentID, dTasks, tTasks, iTasks, vTasks, diagramWorkers, tableWorkers, imageWorkers, diagramRetries, stats, verbose, userAccessToken)
@@ -486,7 +506,7 @@ var importMarkdownCmd = &cobra.Command{
 			if videoUploadTotal > 0 {
 				mediaInfo += fmt.Sprintf(", 视频: %d/%d", stats.videoSuccess, videoUploadTotal)
 			}
-			fmt.Printf("[阶段2] 完成 (%.1fs), 图表: %d/%d, 表格: %d/%d%s\n\n",
+			fmt.Fprintf(progressOut, "[阶段2] 完成 (%.1fs), 图表: %d/%d, 表格: %d/%d%s\n\n",
 				stats.phase2Duration.Seconds(),
 				stats.diagramSuccess, stats.diagramTotal,
 				stats.tableSuccess, stats.tableTotal,
@@ -494,13 +514,13 @@ var importMarkdownCmd = &cobra.Command{
 
 			// === 阶段 3/3: 降级处理 ===
 			if len(failedDiagrams) > 0 {
-				fmt.Printf("=== 阶段 3/3: 降级处理 (%d 个) ===\n", len(failedDiagrams))
+				fmt.Fprintf(progressOut, "=== 阶段 3/3: 降级处理 (%d 个) ===\n", len(failedDiagrams))
 				phase3Start := time.Now()
 
 				phase3HandleFallbacks(documentID, failedDiagrams, stats, verbose, userAccessToken)
 
 				stats.phase3Duration = time.Since(phase3Start)
-				fmt.Printf("[阶段3] 完成 (%.1fs), 降级成功: %d/%d\n\n",
+				fmt.Fprintf(progressOut, "[阶段3] 完成 (%.1fs), 降级成功: %d/%d\n\n",
 					stats.phase3Duration.Seconds(),
 					stats.fallbackSuccess, stats.fallbackSuccess+stats.fallbackFailed)
 			}
@@ -509,7 +529,6 @@ var importMarkdownCmd = &cobra.Command{
 		// === 输出结果 ===
 		totalDuration := stats.phase1Duration + stats.phase2Duration + stats.phase3Duration
 
-		output, _ := cmd.Flags().GetString("output")
 		if output == "json" {
 			if err := printJSON(map[string]any{
 				"document_id":      documentID,
@@ -640,16 +659,13 @@ func phase1CreateBlocks(
 				topLevelBlocks = append(topLevelBlocks, node.Block)
 			}
 
-			// 记录表格块和图片块的索引
+			// 记录表格块的索引
 			var tableIndices []int
-			var imageIndices []int
 			for i, block := range topLevelBlocks {
 				if block.BlockType != nil {
 					switch *block.BlockType {
 					case int(converter.BlockTypeTable):
 						tableIndices = append(tableIndices, i)
-					case int(converter.BlockTypeImage):
-						imageIndices = append(imageIndices, i)
 					}
 				}
 			}
@@ -713,7 +729,7 @@ func phase1CreateBlocks(
 			}
 
 			if verbose {
-				fmt.Printf("  [段落 %d] 创建 %d 个块, %d 个表格\n", segIdx+1, len(createdBlockIDs), len(tableIndices))
+				stats.progressf("  [段落 %d] 创建 %d 个块, %d 个表格\n", segIdx+1, len(createdBlockIDs), len(tableIndices))
 			}
 
 			// 收集表格任务（不立即填充）
@@ -731,22 +747,7 @@ func phase1CreateBlocks(
 				tableDataIdx++
 			}
 
-			// 收集图片任务（不立即上传）
-			imageSourceIdx := 0
-			for _, imgIdx := range imageIndices {
-				if imgIdx >= len(createdBlockIDs) || imageSourceIdx >= len(result.ImageSources) {
-					continue
-				}
-
-				iTasks = append(iTasks, imageTask{
-					index:        len(iTasks) + 1,
-					imageBlockID: createdBlockIDs[imgIdx],
-					source:       result.ImageSources[imageSourceIdx],
-					basePath:     basePath,
-				})
-				imageSourceIdx++
-			}
-
+			iTasks = appendImageTasks(iTasks, result.BlockNodes, createdBlockIDs, nestedCreatedByTop, result.ImageSources, basePath)
 			vTasks = appendVideoTasks(vTasks, result.BlockNodes, createdBlockIDs, nestedCreatedByTop, result.VideoSources, basePath)
 
 		} else if seg.kind == "equation" {
@@ -772,12 +773,12 @@ func phase1CreateBlocks(
 			createdBlocks, _, err := client.CreateBlock(documentID, documentID, equationBlocks, -1, userAccessToken)
 			if err != nil {
 				if verbose {
-					fmt.Printf("  ⚠ 公式块创建失败: %v\n", err)
+					stats.progressf("  ⚠ 公式块创建失败: %v\n", err)
 				}
 			} else {
 				stats.totalBlocks += len(createdBlocks)
 				if verbose {
-					fmt.Printf("  [公式] 创建 %d 个块（行内公式）\n", len(createdBlocks))
+					stats.progressf("  [公式] 创建 %d 个块（行内公式）\n", len(createdBlocks))
 				}
 			}
 
@@ -786,7 +787,7 @@ func phase1CreateBlocks(
 			syntaxLabel := diagramSyntaxLabel(seg.kind)
 
 			if verbose {
-				fmt.Printf("  [%s %d] 创建画板占位块...\n", syntaxLabel, diagramIdx)
+				stats.progressf("  [%s %d] 创建画板占位块...\n", syntaxLabel, diagramIdx)
 			}
 
 			// 只创建画板占位块，不导入图表
@@ -797,20 +798,20 @@ func phase1CreateBlocks(
 				RetryOnRateLimit: true,
 				OnRetry: func(attempt int, err error, wait time.Duration) {
 					if verbose {
-						fmt.Printf("  ⚠ %s %d 创建画板重试 %d/5 (等待 %.1fs): %v\n",
+						stats.progressf("  ⚠ %s %d 创建画板重试 %d/5 (等待 %.1fs): %v\n",
 							syntaxLabel, diagramIdx, attempt, wait.Seconds(), err)
 					}
 				},
 			})
 			if createResult.Err != nil {
-				fmt.Printf("  ✗ %s %d 创建画板失败: %v\n", syntaxLabel, diagramIdx, createResult.Err)
+				stats.progressf("  ✗ %s %d 创建画板失败: %v\n", syntaxLabel, diagramIdx, createResult.Err)
 				stats.diagramFailed++
 				continue
 			}
 			boardResult := createResult.Value
 
 			if boardResult.WhiteboardID == "" {
-				fmt.Printf("  ✗ %s %d 未返回画板 ID\n", syntaxLabel, diagramIdx)
+				stats.progressf("  ✗ %s %d 未返回画板 ID\n", syntaxLabel, diagramIdx)
 				stats.diagramFailed++
 				continue
 			}
@@ -826,7 +827,7 @@ func phase1CreateBlocks(
 			})
 
 			if verbose {
-				fmt.Printf("  [%s %d] 画板已创建: %s\n", syntaxLabel, diagramIdx, boardResult.WhiteboardID)
+				stats.progressf("  [%s %d] 画板已创建: %s\n", syntaxLabel, diagramIdx, boardResult.WhiteboardID)
 			}
 		}
 	}
@@ -1267,6 +1268,13 @@ func validateWorkerCount(flagName string, value int) error {
 	return nil
 }
 
+func validateMarkdownEncoding(content []byte) error {
+	if !utf8.Valid(content) {
+		return fmt.Errorf("Markdown 文件不是合法 UTF-8 编码，请先转换为 UTF-8 后再导入")
+	}
+	return nil
+}
+
 // resolveImageSource 解析图片来源为本地文件路径。
 // 返回本地路径、上传文件名和清理函数（外部 URL 下载的临时文件需要清理）。
 func resolveImageSource(source, basePath string) (string, string, func(), error) {
@@ -1392,6 +1400,53 @@ type createdBlockNode struct {
 	blockID string
 }
 
+func appendImageTasks(
+	tasks []imageTask,
+	topNodes []*converter.BlockNode,
+	topBlockIDs []string,
+	nestedCreatedByTop map[int][]createdBlockNode,
+	imageSources []string,
+	basePath string,
+) []imageTask {
+	sourceIdx := 0
+
+	appendIfImage := func(node *converter.BlockNode, blockID string) {
+		if sourceIdx >= len(imageSources) || !isUploadImageBlockNode(node) {
+			return
+		}
+		tasks = append(tasks, imageTask{
+			index:        len(tasks) + 1,
+			imageBlockID: blockID,
+			source:       imageSources[sourceIdx],
+			basePath:     basePath,
+		})
+		sourceIdx++
+	}
+
+	for i, node := range topNodes {
+		if i >= len(topBlockIDs) {
+			break
+		}
+		appendIfImage(node, topBlockIDs[i])
+		for _, nested := range nestedCreatedByTop[i] {
+			appendIfImage(nested.node, nested.blockID)
+		}
+	}
+
+	return tasks
+}
+
+func isUploadImageBlockNode(node *converter.BlockNode) bool {
+	if node == nil || node.Block == nil || node.Block.BlockType == nil ||
+		*node.Block.BlockType != int(converter.BlockTypeImage) {
+		return false
+	}
+	if node.Block.Image == nil || node.Block.Image.Token == nil {
+		return true
+	}
+	return *node.Block.Image.Token == ""
+}
+
 func appendVideoTasks(
 	tasks []videoTask,
 	topNodes []*converter.BlockNode,
@@ -1449,7 +1504,7 @@ func phase3HandleFallbacks(
 	// 获取文档顶层子块列表
 	children, err := client.GetAllBlockChildren(documentID, documentID, userAccessToken)
 	if err != nil {
-		fmt.Printf("  ✗ 获取文档子块失败，无法降级: %v\n", err)
+		stats.progressf("  ✗ 获取文档子块失败，无法降级: %v\n", err)
 		stats.fallbackFailed += len(failedDiagrams)
 		return
 	}
@@ -1474,7 +1529,7 @@ func phase3HandleFallbacks(
 		} else {
 			syntaxLabel := diagramSyntaxLabel(r.task.syntax)
 			if verbose {
-				fmt.Printf("  ⚠ %s %d 画板块未找到，跳过降级\n", syntaxLabel, r.task.index)
+				stats.progressf("  ⚠ %s %d 画板块未找到，跳过降级\n", syntaxLabel, r.task.index)
 			}
 			stats.fallbackFailed++
 		}
@@ -1487,13 +1542,13 @@ func phase3HandleFallbacks(
 	for _, item := range items {
 		syntaxLabel := diagramSyntaxLabel(item.result.task.syntax)
 		if verbose {
-			fmt.Printf("  [降级] %s %d → 代码块 (位置 %d)\n", syntaxLabel, item.result.task.index, item.index)
+			stats.progressf("  [降级] %s %d → 代码块 (位置 %d)\n", syntaxLabel, item.result.task.index, item.index)
 		}
 
 		// 1. 删除空画板块
 		_, err := client.DeleteBlocks(documentID, documentID, item.index, item.index+1, userAccessToken)
 		if err != nil {
-			fmt.Printf("  ✗ %s %d 删除画板失败: %v\n", syntaxLabel, item.result.task.index, err)
+			stats.progressf("  ✗ %s %d 删除画板失败: %v\n", syntaxLabel, item.result.task.index, err)
 			stats.fallbackFailed++
 			continue
 		}
@@ -1502,14 +1557,14 @@ func phase3HandleFallbacks(
 		codeBlock := createDiagramCodeBlock(item.result.task.syntax, item.result.task.content)
 		_, _, err = client.CreateBlock(documentID, documentID, []*larkdocx.Block{codeBlock}, item.index, userAccessToken)
 		if err != nil {
-			fmt.Printf("  ✗ %s %d 插入代码块失败: %v\n", syntaxLabel, item.result.task.index, err)
+			stats.progressf("  ✗ %s %d 插入代码块失败: %v\n", syntaxLabel, item.result.task.index, err)
 			stats.fallbackFailed++
 			continue
 		}
 
 		stats.fallbackSuccess++
 		if verbose {
-			fmt.Printf("  ✓ %s %d 降级成功\n", syntaxLabel, item.result.task.index)
+			stats.progressf("  ✓ %s %d 降级成功\n", syntaxLabel, item.result.task.index)
 		}
 	}
 }

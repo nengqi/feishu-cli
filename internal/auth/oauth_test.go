@@ -42,11 +42,11 @@ func newMockTokenServer(t *testing.T, statusCode int, respondWith map[string]any
 
 func TestRefreshAccessToken_UsesFormURLEncoded(t *testing.T) {
 	srv, cap := newMockTokenServer(t, http.StatusOK, map[string]any{
-		"access_token":              "new-access",
-		"refresh_token":             "new-refresh",
-		"expires_in":                7200,
-		"refresh_token_expires_in":  604800,
-		"scope":                     "search:docs:read",
+		"access_token":             "new-access",
+		"refresh_token":            "new-refresh",
+		"expires_in":               7200,
+		"refresh_token_expires_in": 604800,
+		"scope":                    "search:docs:read",
 	})
 	// 模拟 feishu 的 baseURL 末尾不带 /open-apis/authen/v2/oauth/token
 	// RefreshAccessToken 会自己拼接该路径，所以测试 server 需要挂在根路径 + 该子路径

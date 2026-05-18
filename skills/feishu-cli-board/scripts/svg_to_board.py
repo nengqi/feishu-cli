@@ -221,6 +221,10 @@ def parse_create_notes_response(stdout):
 def step4_upload(nodes, board_id, feishu_cli, batch, interval):
     """分批 create-notes 上传。"""
     step(4, f"分批上传（batch={batch} interval={interval}s）")
+    if batch <= 0:
+        fail("--batch 必须大于 0", 2)
+    if interval < 0:
+        fail("--interval 不能小于 0", 2)
     total = len(nodes)
     if total == 0:
         info("无节点可上传")
@@ -274,6 +278,8 @@ def step5_verify(board_id, feishu_cli, expected_count):
         if start >= 0 and end >= 0:
             data = json.loads(s[start:end+1])
             actual_nodes = data.get("data", {}).get("nodes", []) or []
+            if isinstance(actual_nodes, dict):
+                actual_nodes = list(actual_nodes.values())
             actual = len(actual_nodes)
             type_count = {}
             for n in actual_nodes:

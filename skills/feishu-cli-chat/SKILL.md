@@ -3,655 +3,117 @@ name: feishu-cli-chat
 description: >-
   飞书会话浏览、消息互动与群聊管理。查看聊天记录（单聊/群聊）、搜索群聊、获取消息详情、
   Reaction 表情回应、Pin 置顶/取消置顶、删除消息，以及群聊信息管理（获取/更新/解散/成员）。
-  支持普通群和话题群（话题群自动获取线程回复）。大多数命令需要 User Token；`msg delete` 默认使用 App Token（Bot 撤回自己 24h 内消息），可选传 User Token 让群管理员撤回他人消息。
-  当用户请求"查看聊天记录"、"读私聊"、"p2p 聊天"、"群聊历史"、"搜索群聊"、
-  "查群信息/群成员"、"Reaction/表情回应"、"Pin/置顶消息"、"删除消息"、"消息详情"、
-  "和某人聊了什么"、"群里说了什么"、"总结群消息"、"话题回复 / thread replies"、
-  "合并转发里有啥"、"读合并转发"、"merge_forward 子消息"时使用。
-  特性：传 --user-email 或 --user-id 即可直读私聊无需反查 chat_id；消息列表自动附带
-  sender_names（open_id → 姓名）映射，无需额外调 member list。
-  即使用户只给出群名或 chat_id 想"浏览消息"而未说"聊天记录"，也应使用此技能。
+  支持普通群和话题群（可按 thread_id 获取话题回复，不会自动递归展开所有线程）。
+  大多数命令需要 User Token；msg delete 默认 App Token 用于 Bot 自撤回，可显式 User Token 给管理员撤回场景。
 argument-hint: <chat_id|群名|用户名>
 user-invocable: true
-allowed-tools: Bash, Read, Write
+allowed-tools: Bash(feishu-cli auth:*), Bash(feishu-cli msg:*), Bash(feishu-cli chat:*), Bash(feishu-cli search:*), Bash(feishu-cli user:*), Read, Write
 ---
 
 # 飞书会话浏览与管理
 
-通过 feishu-cli 浏览飞书单聊/群聊消息历史、搜索会话、管理群聊信息和成员。
+本技能处理“读聊天记录 / 管群 / 消息互动”。发送新消息走 `feishu-cli-msg`；构造卡片走 `feishu-cli-card`。
 
-## 前置条件
+## 认证
 
-- **feishu-cli**：如尚未安装，请前往 [riba2534/feishu-cli](https://github.com/riba2534/feishu-cli) 获取安装方式
-
-本技能的**大多数核心命令需使用 User Token**，使用前需先登录。例外：`msg delete` 默认走 App Token（Bot 撤回自己 24h 内消息无需登录），仅在群管理员撤回他人消息时才需要 User Token。`chat create`、`chat link`、`msg read-users` 使用 App Token，属于 feishu-cli-toolkit 技能。
+多数命令需要 User Token：
 
 ```bash
-feishu-cli auth login
+feishu-cli auth check --scope "im:message:readonly im:message.group_msg:get_as_user"
+feishu-cli auth login --domain chat --recommend
 ```
 
-未登录时命令会直接报错并提示登录方式。登录后 token 自动加载，无需手动传参。
+`msg delete` 例外：默认 App Token，用于 Bot 撤回自己 24 小时内发送的消息；传 `--user-access-token` 或环境变量时可走管理员撤回场景。
 
-### 身份说明
-
-| 身份 | 使用场景 |
-|------|---------|
-| **User Token**（必须） | 本技能大多数读取/管理命令：chat get/update/delete、member list/add/remove、msg get/history/list/pins/reaction/search-chats、search messages |
-| **App Token / User Token 可选** | `msg delete`：默认 App Token（Bot 撤回自己 24h 内消息）；可选 `--user-access-token` 让群管理员撤回他人消息 |
-| **App Token** | 仅 `chat create`、`chat link`、`msg read-users`（这三个命令不属于本技能核心流程） |
-
-User Token 能力：
-- 查看 bot 不在的群聊消息
-- 查看私聊（p2p）消息
-- 搜索用户有权限的所有会话
-
-### 自动降级机制
-
-当使用 User Token 调用 `msg history` / `msg list` 时，如果 bot 不在目标群中，API 会返回空结果。CLI 会自动检测这种情况并降级为 **search + get** 方式获取消息：
-
-```
-list API 返回空 + has_more=true → 自动切换到搜索模式 → 逐条获取消息内容
-```
-
-这个过程对用户透明，无需手动干预。
-
----
-
-## 场景一：查看群聊历史消息
-
-这是最常见的场景——用户想看某个群最近在聊什么。
-
-### 步骤 1：找到群聊
-
-如果用户给了群名而不是 chat_id，先搜索：
+## 读消息
 
 ```bash
-feishu-cli msg search-chats --query "群名关键词" -o json
+# 群聊历史
+feishu-cli msg history --container-id oc_xxx --container-id-type chat --page-size 50 -o json
+
+# 私聊：按邮箱或 open_id 自动反查 P2P chat_id
+feishu-cli msg history --user-email user@example.com --page-size 50 -o json
+feishu-cli msg history --user-id ou_xxx --page-size 50 -o json
+
+# 消息详情 / 批量详情
+feishu-cli msg get <message_id> -o json
+feishu-cli msg mget --message-ids <message_id1,message_id2>
+
+# 话题回复：需要明确 thread_id
+feishu-cli msg thread-messages <thread_id> --page-size 50
 ```
 
-输出中的 `chat_id`（形如 `oc_xxx`）就是后续命令需要的标识。
-
-### 步骤 2：获取消息
-
-```bash
-# 获取最近 50 条消息（API 单次上限 50）
-feishu-cli msg history \
-  --container-id oc_xxx \
-  --container-id-type chat \
-  --page-size 50 \
-  --sort-type ByCreateTimeDesc \
-  -o json
-
-# 按时间范围获取（--start-time 为秒级时间戳，仅返回该时间之后的消息）
-# 获取"今天 00:00 至今"的消息示例：
-START_TS=$(python3 -c "from datetime import datetime,timezone,timedelta; tz=timezone(timedelta(hours=8)); print(int(datetime.now(tz).replace(hour=0,minute=0,second=0,microsecond=0).timestamp()))")
-feishu-cli msg history \
-  --container-id oc_xxx \
-  --container-id-type chat \
-  --page-size 50 \
-  --start-time $START_TS \
-  --sort-type ByCreateTimeAsc \
-  -o json
-
-# 获取更早的消息（使用上一次返回的 page_token 翻页）
-feishu-cli msg history \
-  --container-id oc_xxx \
-  --container-id-type chat \
-  --page-size 50 \
-  --page-token "上一页返回的token" \
-  -o json
-```
-
-### 步骤 2.5：判断群类型并获取线程回复
-
-飞书群聊分为**普通群**和**话题群**两种，消息结构和获取策略完全不同。
-
-#### 如何判断群类型
-
-观察 `msg history` 返回的消息字段：
-
-| 群类型 | 特征 | 示例 |
-|--------|------|------|
-| **话题群** | **每条**消息都有 `thread_id`（形如 `omt_xxx`），主消息流仅包含每个话题的首条消息 | 泰国华商群 |
-| **普通群** | 独立消息**无** `thread_id`，仅被回复的消息和回复消息才有 `thread_id` | Claude Code闲聊群 |
-
-#### 消息中的线程相关字段
-
-| 字段 | 说明 | 出现条件 |
-|------|------|---------|
-| `thread_id` | 线程/话题 ID（形如 `omt_xxx`） | 话题群所有消息 / 普通群中参与线程的消息 |
-| `root_id` | 线程根消息 ID（即话题首条消息） | 线程回复消息 |
-| `parent_id` | 直接上级消息 ID（被回复的那条消息） | 线程回复消息 |
-
-#### 普通群：一次获取全部消息
-
-普通群的 `msg history` 返回**所有消息**（独立消息 + 线程回复），平铺在同一列表中。通过 `root_id`/`parent_id` 可重建回复关系，**不需要**额外获取线程。
-
-```
-独立消息:       无 thread_id、无 root_id
-被回复的消息:   有 thread_id（被回复后自动产生）
-线程回复:       有 thread_id + root_id + parent_id
-```
-
-#### 话题群：需要逐个话题获取回复（重要）
-
-话题群的 `msg history --container-id-type chat` **仅返回每个话题的首条消息**，线程回复不在主消息流中。必须按 thread_id 逐个获取：
-
-```bash
-# 获取单个话题的所有回复（按时间正序，方便阅读）
-feishu-cli msg history \
-  --container-id omt_xxx \
-  --container-id-type thread \
-  --page-size 50 \
-  --sort-type ByCreateTimeAsc \
-  -o json
-```
-
-**完整的话题群获取流程**：
-
-```bash
-# 1. 获取主消息流（每个话题的首条消息）
-feishu-cli msg history \
-  --container-id oc_xxx \
-  --container-id-type chat \
-  --page-size 50 \
-  --sort-type ByCreateTimeDesc \
-  -o json
-
-# 2. 从返回结果中提取所有 thread_id
-
-# 3. 对每个 thread_id 获取回复（可并发执行，提高效率）
-feishu-cli msg history --container-id omt_xxx --container-id-type thread --page-size 50 --sort-type ByCreateTimeAsc -o json
-feishu-cli msg history --container-id omt_yyy --container-id-type thread --page-size 50 --sort-type ByCreateTimeAsc -o json
-# ... 多个话题可并行获取
-```
-
-> **性能提示**：话题群中活跃话题可能有 10-20 个，建议**并发获取**多个话题的回复。飞书 API 对 `msg history` 无严格 QPS 限制（不同于搜索 API），可以安全并发。
-
-### 发送者名字自动解析（v1.21.0+）
-
-`msg history` / `msg get` / `msg mget` 的 JSON 输出会自动附带一个 `sender_names` 顶层字段，形如：
+JSON 字段使用 snake_case：
 
 ```json
 {
-  "Items": [...],
-  "HasMore": true,
-  "sender_names": {
-    "ou_abc...": "张三",
-    "ou_def...": "李四"
-  }
+  "items": [],
+  "has_more": true,
+  "page_token": "next_page",
+  "sender_names": {"ou_xxx": "张三"},
+  "merge_forward_sub_messages": {}
 }
 ```
 
-解析路径：
-1. 从消息的 `mentions` 字段抽已有的 `{id, name}` 映射（免费）
-2. 剩余未解的 user 发送者 open_id 批量调 `POST /open-apis/contact/v3/users/basic_batch`（每批 10 个）
+分页时检查 `has_more` 和 `page_token`。合并转发子消息会自动展开到 `merge_forward_sub_messages`，通常不需要二次调用 API。
 
-覆盖范围优于 `chat member list`：**已退群成员**也能解出来（basic_batch 不依赖群成员视野）。
-App sender（bot）不会被解析，需要名字时查应用列表。
-
-**AI Agent 使用建议**：直接 `sender_names[msg.sender.id]` 查名字，不用再另外跑 `chat member list`。
-
-### 步骤 3：解析消息内容
-
-API 返回的消息 body.content 是 JSON 字符串，常见格式：
-
-| msg_type | content 格式 | 说明 |
-|----------|-------------|------|
-| text | `{"text":"消息内容"}` | 纯文本，`@_user_1` 是 at 占位符 |
-| post | 富文本 JSON | 包含标题和段落结构 |
-| image | `{"image_key":"xxx"}` | 图片 |
-| interactive | 卡片 JSON | 交互式卡片 |
-| share_calendar_event | `{"summary":"会议名","start_time":"ms","end_time":"ms",...}` | 日历事件分享 |
-| sticker | `{"sticker_key":"xxx"}` | 表情包 |
-| file | `{"file_key":"xxx","file_name":"..."}` | 文件 |
-| merge_forward | `"Merged and Forwarded Message"` 占位符 | **容器壳**——实际子消息已**自动展开**到顶层 `merge_forward_sub_messages[<container_message_id>]`（list/history/mget）或 `sub_messages`（get），递归到底。每条子消息带 `upper_message_id` 可重建嵌套树 |
-
-用 Python 提取文本内容的常用方式：
-
-```python
-import json
-content = json.loads(msg['body']['content'])
-text = content.get('text', '')
-```
-
-合并转发消息的子内容已经自动展开，**不需要二次调 API**：
-
-```python
-sub_map = data.get('merge_forward_sub_messages', {})
-for msg in data['Items']:
-    if msg['msg_type'] == 'merge_forward':
-        subs = sub_map.get(msg['message_id'], [])
-        print(f"合并转发包含 {len(subs)} 条嵌套消息（含递归展开）")
-        for sub in subs:
-            print(f"  - [{sub['msg_type']}] {sub['body']['content'][:80]}")
-            # sub['upper_message_id'] 标记父级，可重建嵌套树
-```
-
-### 完整示例：获取并总结群聊最近 N 条消息
+## 搜索与定位
 
 ```bash
-# 1. 搜索群聊
-feishu-cli msg search-chats --query "Go讨论区" -o json
+# 搜索群聊
+feishu-cli msg search-chats --query "项目群" -o json
 
-# 2. 获取消息（循环翻页直到够数）
-feishu-cli msg history \
-  --container-id oc_xxx \
-  --container-id-type chat \
-  --page-size 50 \
-  --sort-type ByCreateTimeDesc \
-  -o json > /tmp/chat_page1.json
-
-# 3. 提取 page_token 获取下一页
-# ... 循环直到获取足够消息
-```
-
-> **注意**：Search API 的 page_size 与 List API 不同，降级模式下每页实际返回数量可能少于请求值。建议循环翻页直到 `has_more=false` 或达到目标数量。
-
----
-
-## 场景二：查看和某人的私聊记录
-
-`msg history` 原生支持 P2P：传 `--user-email` 或 `--user-id`，CLI 会自动
-搜用户 → 反查 P2P `chat_id`（`POST /open-apis/im/v1/chat_p2p/batch_query`）→
-复用标准的 `GET /open-apis/im/v1/messages` 读消息，整条流程一条命令搞定。
-
-### 推荐用法：按邮箱读私聊
-
-```bash
-# 读和某人的私聊最近 50 条（按时间倒序）
-feishu-cli msg history --user-email user@example.com --page-size 50 -o json
-
-# 指定时间范围 + 按时间正序（便于阅读）
-feishu-cli msg history --user-email user@example.com \
-  --start-time 1704067200 --sort-type ByCreateTimeAsc -o json
-```
-
-### 按 open_id 读私聊
-
-```bash
-# 已知对方 open_id，跳过搜用户步骤
-feishu-cli msg history --user-id ou_xxx --page-size 50 -o json
-```
-
-### 查找对方 open_id（可选，仅在 `--user-email` 走不通时用）
-
-```bash
-# 按邮箱查（推荐）— 带 User Token 时自动用 search/v1/user 补 open_id
-feishu-cli user search --email user@example.com -o json
-
-# 按姓名/任意关键词模糊搜索
-feishu-cli user search --query "张三" -o json
-```
-
-### 按关键词搜 P2P 消息
-
-`msg history` 拉全量；如果要按关键词筛 P2P，用搜索 API：
-
-```bash
-# 搜全部 P2P 私聊中含关键词的消息
+# 搜索消息内容，P2P 用 search messages 而不是 search-chats
 feishu-cli search messages "关键词" --chat-type p2p_chat -o json
-
-# 限定发送者
-feishu-cli search messages "关键词" --chat-type p2p_chat --from-ids ou_xxx -o json
-```
-
-### 限制说明
-
-- P2P 场景下 `msg get` 仅在 **User Token** 下可用（能拿到完整 body + sender_names）；**App Token** 走 `msg get` 会触发 230013 / 230001 硬限制（Bot 不在 P2P 会话），此时改用 `msg history` 走 list 端点
-- 搜索 API 的 `query` 参数不能为空，至少一个空格 `" "`
-- P2P 聊天无法通过 `msg search-chats` 搜索（该 API 只搜索群聊）
-
----
-
-## 场景三：搜索群聊
-
-### 搜索群聊列表
-
-```bash
-# 按关键词搜索群聊
-feishu-cli msg search-chats --query "关键词" -o json
-
-# 分页获取所有群
-feishu-cli msg search-chats --page-size 100 -o json
-```
-
-### 在群内搜索消息
-
-```bash
-# 在指定群中搜索消息
 feishu-cli search messages "关键词" --chat-ids oc_xxx -o json
 ```
 
-> **更多搜索功能**（按时间范围、消息类型、发送者、跨模块搜索文档/应用等）请使用 **feishu-cli-search** 技能，提供完整的筛选参数和 Token 排错指南。
+搜索消息属于 `feishu-cli-search` 的能力；本技能只在聊天阅读任务里顺带调用。
 
----
-
-## 场景四：群聊信息管理
-
-### 查看群信息
+## 消息互动
 
 ```bash
-feishu-cli chat get oc_xxx
-```
-
-默认输出 JSON 格式，包含群名、描述、群主、群类型、成员数量等。
-
-### 查看群成员
-
-```bash
-# 获取成员列表
-feishu-cli chat member list oc_xxx
-
-# 指定 ID 类型
-feishu-cli chat member list oc_xxx --member-id-type user_id
-
-# 分页获取（大群）
-feishu-cli chat member list oc_xxx --page-size 100 --page-token "xxx"
-```
-
-> **Scope 要求**：使用 User Token 时需要 `im:chat:read` 或 `im:chat.members:read` scope。若报 99991679 错误，用 `auth check --scope "im:chat:read"` 定位缺失，然后去飞书开放平台的应用权限管理页面开通 `im:chat:read`，最后重新 `auth login`。
-
-### 修改群信息
-
-```bash
-# 改群名
-feishu-cli chat update oc_xxx --name "新群名"
-
-# 改群描述
-feishu-cli chat update oc_xxx --description "新的群描述"
-
-# 转让群主
-feishu-cli chat update oc_xxx --owner-id ou_xxx
-```
-
-### 群成员管理
-
-```bash
-# 添加成员
-feishu-cli chat member add oc_xxx --id-list ou_xxx,ou_yyy
-
-# 移除成员
-feishu-cli chat member remove oc_xxx --id-list ou_xxx
-
-# 使用 user_id 类型
-feishu-cli chat member add oc_xxx --id-list user_xxx --member-id-type user_id
-```
-
-### 创建群聊
-
-```bash
-feishu-cli chat create --name "新群聊" --user-ids ou_xxx,ou_yyy
-```
-
-> **注意**：`chat create` 和 `chat link`（获取分享链接）仅支持 App Token（租户身份），不支持 User Token。
-
-### 解散群聊
-
-```bash
-feishu-cli chat delete oc_xxx
-# 会要求确认，不可逆操作
-```
-
----
-
-## 场景五：消息详情与互动
-
-### 获取单条消息详情
-
-```bash
-feishu-cli msg get om_xxx -o json
-# 默认 user_card_content，CLI 自动提取 card_texts 方便阅读
-
-# 显式拿原始 schema 2.0 userDSL（默认行为，等价于不传）
-feishu-cli msg get om_xxx --card-content-type user -o json
-
-# 返回平台内部完整 cardDSL（含默认补全字段）
-feishu-cli msg get om_xxx --card-content-type raw -o json
-
-# 回到 OAPI 旧的"渲染版/降级版"（部分卡片可能只返回"请升级客户端"占位）
-feishu-cli msg get om_xxx --card-content-type rendered -o json
-```
-
-> **v1.26+ 默认改为 `user`**：不传 `--card-content-type` 时 CLI 默认请求 `user_card_content` 并额外提取 `card_texts` 字段，避免某些卡片只返回"请升级客户端"降级内容。需要旧行为请显式传 `--card-content-type rendered`。**`--card-content-type` 接受** `user` / `user_card_content`（userDSL）/ `raw` / `raw_card_content`（cardDSL）/ `rendered`（OAPI 原渲染版），短别名与完整 OAPI 名等价。**同样适用于 `msg list` / `msg mget` / `msg history`**，仅对 interactive 卡片生效，其他 msg_type 不受影响。`user_card_content` = userDSL（开发者构建卡片时的 schema 2.0 JSON）；`raw_card_content` = cardDSL（平台内部完整描述，含默认补全字段）。
-
-### 合并转发消息自动展开（v1.23.0+）
-
-飞书"合并转发"（`msg_type=merge_forward`）消息的 `body.content` 是固定占位符 `"Merged and Forwarded Message"`，子消息（文本/卡片/图片等）需通过特殊 API 路径获取。**`msg get` / `msg list` / `msg history` / `msg mget` 现已默认自动展开子消息，无需手动二次调用**。
-
-**输出形态**：
-
-> 下方 JSON 示例仅展示新增字段；其余字段（`sender`、`create_time`、`chat_id` 等）走标准 message schema，示例中以 `...` 省略，实际响应保留全部字段。
-
-- `msg get <merge_forward_id>` 时 JSON 顶层多出 `sub_messages` 数组：
-
-  ```json
-  {
-    "message": {"message_id": "om_mf", "msg_type": "merge_forward", "body": {"content": "Merged and Forwarded Message"}, ...},
-    "sender_names": {"ou_xxx": "张三", "ou_yyy": "李四"},
-    "sub_messages": [
-      {"message_id": "om_sub_1", "upper_message_id": "om_mf", "msg_type": "interactive", "body": {"content": "..."}, ...},
-      {"message_id": "om_sub_2", "upper_message_id": "om_mf", "msg_type": "text", ...}
-    ]
-  }
-  ```
-
-- `msg list` / `msg history` / `msg mget` 时 JSON 顶层多出 `merge_forward_sub_messages` map（key 为容器 `message_id`，value 为递归平铺的子消息列表）：
-
-  ```json
-  {
-    "Items": [
-      {"message_id": "om_text", "msg_type": "text", ...},
-      {"message_id": "om_mf", "msg_type": "merge_forward", ...}
-    ],
-    "sender_names": {...},
-    "merge_forward_sub_messages": {
-      "om_mf": [
-        {"message_id": "om_sub_1", "upper_message_id": "om_mf", ...},
-        {"message_id": "om_sub_2", "upper_message_id": "om_mf", ...}
-      ]
-    }
-  }
-  ```
-
-**行为特性**：
-- **递归到底**：嵌套合并转发会一直展开，深度上限 10 层（防呆）
-- **平铺保留 `upper_message_id`**：每条子消息带 `upper_message_id` 指向直接父级，可用此字段重建嵌套树
-- **`sender_names` 已合并**：顶层 `sender_names` 包含所有嵌套子消息发送者，无需额外查用户
-- **并发展开**：list/history 中多个 merge_forward 容器并发展开（上限 5），常见场景延迟增加 200-500ms
-- **失败容错**：单条 merge_forward 展开失败不阻断主流程，stderr 提示但 JSON 输出不污染
-
-**逃生开关**：极端情况（如飞书 API 行为变更）可设环境变量禁用：
-
-```bash
-export FEISHU_DISABLE_MERGE_FORWARD_EXPAND=1
-```
-
-### 查看消息已读情况
-
-```bash
-feishu-cli msg read-users om_xxx -o json
-```
-
-> **限制**：仅支持查询 bot 自己发送的、7 天内的消息，且 bot 必须在会话内。此命令仅使用 App Token。
-
-### 查看群内置顶消息
-
-```bash
-feishu-cli msg pins --chat-id oc_xxx -o json
-```
-
-### 置顶/取消置顶消息
-
-```bash
-# 置顶消息
-feishu-cli msg pin <message_id>
-
-# 取消置顶
-feishu-cli msg unpin <message_id>
-```
-
-### Reaction 表情回应
-
-```bash
-# 添加表情
+# Reaction
 feishu-cli msg reaction add <message_id> --emoji-type THUMBSUP
+feishu-cli msg reaction remove <message_id> --reaction-id <reaction_id>
+feishu-cli msg reaction list <message_id>
 
-# 删除表情
-feishu-cli msg reaction remove <message_id> --reaction-id <REACTION_ID>
+# Pin
+feishu-cli msg pin <message_id>
+feishu-cli msg unpin <message_id>
+feishu-cli msg pins --chat-id <chat_id>
 
-# 查询表情列表
-feishu-cli msg reaction list <message_id> [--emoji-type THUMBSUP] [--page-size 20]
+# 删除消息
+feishu-cli msg delete <message_id>
+feishu-cli msg delete <message_id> --user-access-token u-xxx
 ```
 
-常用 emoji-type：`THUMBSUP`（点赞）、`SMILE`（微笑）、`LAUGH`（大笑）、`HEART`（爱心）、`JIAYI`（加一）、`OK`、`FIRE`
-
-### 删除消息
-
-撤回消息后不可恢复。Token 用法分两种：
-
-- **Bot 自撤回**（默认）：使用 App Token 撤回机器人自己 24h 内发送的群/私聊消息，**无需登录**
-- **管理员撤回他人**：传 `--user-access-token` 或设置 `FEISHU_USER_ACCESS_TOKEN`，要求当前用户在该群有管理权限
+## 群聊管理
 
 ```bash
-# Bot 撤回自己消息（默认）
-feishu-cli msg delete <message_id>
-
-# 群管理员撤回他人消息（需先 auth login）
-feishu-cli msg delete <message_id> --user-access-token <token>
+feishu-cli chat get oc_xxx -o json
+feishu-cli chat update oc_xxx --name "新群名"
+feishu-cli chat member list oc_xxx -o json
+feishu-cli chat member add oc_xxx --id-list ou_xxx,ou_yyy
+feishu-cli chat member remove oc_xxx --id-list ou_xxx
+feishu-cli chat create --name "项目群" --user-ids ou_xxx,ou_yyy
+feishu-cli chat delete oc_xxx
 ```
 
----
+## 常见决策
 
-## 常见操作速查表
+| 需求 | 命令 |
+|---|---|
+| 看某个群最近消息 | `msg history --container-id <chat_id> --container-id-type chat` |
+| 看和某人的私聊 | `msg history --user-email <email>` 或 `--user-id <open_id>` |
+| 找群 | `msg search-chats --query "<name>"` |
+| 按关键词搜消息 | `search messages "<keyword>" ...` |
+| 读合并转发 | `msg get -o json` / `msg mget --message-ids ...` / `msg history -o json`，查看 `merge_forward_sub_messages` |
+| 看话题回复 | `msg thread-messages <thread_id>` |
+| 发送新消息 | 转到 `feishu-cli-msg` |
 
-| 用户意图 | 命令 | Token |
-|---------|------|:---:|
-| 看某群最近消息 | `msg history --container-id oc_xxx --container-id-type chat` | User |
-| 看话题群的线程回复 | `msg history --container-id omt_xxx --container-id-type thread` | User |
-| 看和某人的私聊（邮箱） | `msg history --user-email user@example.com` | User |
-| 看和某人的私聊（open_id） | `msg history --user-id ou_xxx` | User |
-| 按关键词搜 P2P 消息 | `search messages " " --chat-type p2p_chat --from-ids ou_xxx` | User |
-| 搜索群聊 | `msg search-chats --query "关键词"` | User |
-| 在群内搜索消息 | `search messages "关键词" --chat-ids oc_xxx` | User |
-| 查群信息 | `chat get oc_xxx` | User |
-| 查群成员 | `chat member list oc_xxx` | User |
-| 改群名/群主 | `chat update oc_xxx --name "新名"` | User |
-| 加/删群成员 | `chat member add/remove oc_xxx --id-list xxx` | User |
-| 查消息详情（含合并转发自动展开） | `msg get om_xxx`（合并转发自动展开到 `sub_messages` 字段） | User |
-| 看置顶消息 | `msg pins --chat-id oc_xxx` | User |
-| 置顶/取消置顶 | `msg pin/unpin <message_id>` | User |
-| 添加 Reaction | `msg reaction add <message_id> --emoji-type THUMBSUP` | User |
-| Bot 撤回自己消息 | `msg delete <message_id>` | App（默认，无需登录） |
-| 群管理员撤回他人消息 | `msg delete <message_id> --user-access-token <token>` | User |
-| 查消息已读 | `msg read-users om_xxx` | App（仅 bot 消息） |
-| 创建群聊 | `chat create --name "群名"` | App |
-| 获取群链接 | `chat link oc_xxx` | App |
+## 输出处理
 
-> 标记 **User** 的命令必须先 `auth login`，未登录会报错。标记 **App** 的命令使用应用身份，无需登录。
-
----
-
-## 外部群 API 兼容性
-
-飞书群聊分为**内部群**和**外部群**（跨租户群，如与外部商家的协作群）。不同 API 对外部群的支持不同：
-
-| API / 命令 | 外部群可用 | 说明 |
-|-----------|:---------:|------|
-| `msg history` | ✅ | 获取群消息列表，返回完整 body.content |
-| `msg thread-messages` | ✅ | 获取话题回复，外部群正常工作 |
-| `msg search-chats` | ✅ | 搜索群聊，外部群正常工作 |
-| `chat get` / `chat member list` | ✅ | 查看群信息和成员 |
-| `msg get`（merge_forward 容器） | ✅ | 自动展开走 raw_card_content 路径不触发 230027（实测 SEA AM 测试群通过） |
-| `msg get`（普通消息） | ❌ | 报错 230027 `no permission to operate external chats` |
-| `msg mget`（merge_forward 容器） | ✅ | 内部并发调 `msg get`，同样能展开 |
-| `msg mget`（普通消息） | ❌ | 同 `msg get` 普通消息 |
-| `user info`（查发送者名字） | ❌ | 需要 `contact` 权限，外部租户用户无法查询 |
-
-**实际影响**：获取群聊内容**完全不依赖 `msg get`/`msg mget`**，`msg history` + `msg thread-messages` 已经覆盖所有需求。如果遇到 230027 错误，说明使用了错误的 API，应改用 `msg history`。
-
-### 发送者用户名获取
-
-`user info` API 对外部群成员不可用（缺 `contact` 权限），但可以通过消息中的 `mentions` 字段提取被 @的用户名：
-
-```python
-import json
-
-# 方法：从 mentions 字段构建名字映射
-name_map = {}
-for msg in messages:
-    for mention in msg.get('mentions', []):
-        name_map[mention['id']] = mention['name']
-
-# 解析 post 类型消息中的 @用户名
-content = json.loads(msg['body']['content'])
-for line in content.get('content', []):
-    for elem in line:
-        if elem.get('tag') == 'at':
-            user_name = elem.get('user_name', '')  # 直接可用
-            user_id = elem.get('user_id', '')      # @_user_1 之类的占位符
-```
-
-**注意**：仅被 @过的用户名字会出现在 `mentions` 中。未被 @过的用户只能显示 open_id，无法解析名字。
-
----
-
-## 处理大量消息的最佳实践
-
-当需要获取并分析大量消息（如 100+ 条）时：
-
-1. **保存到文件**：每页结果用 `-o json` 输出，重定向到文件
-2. **循环翻页**：检查 `HasMore` 和 `PageToken`，循环获取直到满足条件
-3. **用 Python 解析**：JSON 消息结构需要解析 `body.content` 提取文本
-4. **注意限频**：搜索 API 有频率限制，大量请求间加 1s 延迟；`msg history` 限频较宽松，可安全并发
-5. **时间戳**：`create_time` 是毫秒级时间戳，需除以 1000 转为秒
-6. **话题群并发获取线程**：话题群需要对每个 `thread_id` 单独调用 `msg history --container-id-type thread`，建议**并行调用**多个话题以提高效率（实测 10-20 个并发无问题）
-7. **已撤回消息**：`deleted: true` 的消息内容为 `"This message was recalled"`，汇总时应跳过
-8. **合并转发处理**：list/history/mget 自动展开到顶层 `merge_forward_sub_messages[<container_message_id>]`；`msg get` 单条则放在 `sub_messages` 数组里（均递归到底）。无需手动二次调用。性能：list 内并发上限 5，单 page 含 5 条 merge_forward 大约多 200-500ms。如需禁用可设 `FEISHU_DISABLE_MERGE_FORWARD_EXPAND=1`
-
-```python
-import json
-from datetime import datetime
-
-# 解析消息时间
-ts = int(msg['create_time']) / 1000
-dt = datetime.fromtimestamp(ts)
-time_str = dt.strftime('%Y-%m-%d %H:%M')
-
-# 提取文本内容
-content = json.loads(msg['body']['content'])
-text = content.get('text', '')
-```
-
----
-
-## 权限要求
-
-| scope | 说明 | 对应命令 |
-|-------|------|---------|
-| `im:message:readonly` | 消息读取 | msg get/history/list |
-| `im:message.group_msg:get_as_user` | User 身份读取群消息 | msg history/list（读群消息必需） |
-| `im:message.p2p_msg:get_as_user` | User 身份读取私聊消息 | msg history --user-email/--user-id |
-| `contact:user:search` | 按关键词搜用户 | user search --query / --email（补 open_id）、msg history --user-email |
-| `contact:user.base:readonly` | 批量查用户基本资料 | msg history/get/mget 自动补 sender_names |
-| `im:message.pins` | 消息置顶管理 | msg pin/unpin/pins |
-| `im:message.reactions` | 消息 Reaction | msg reaction add/remove/list |
-| `im:message` | 消息读写 | msg delete |
-| `im:chat:read` | 群聊搜索 | msg search-chats |
-| `im:chat:read` | 群聊信息只读 | chat get、chat member list |
-| `im:chat.members:read` | 群成员读取 | chat member list |
-| `im:chat` | 群聊管理 | chat update/delete |
-| `im:chat.members` | 群成员管理 | chat member add/remove |
-| `search:message` | 消息搜索 | search messages |
-
----
-
-## 与其他技能的分工
-
-| 场景 | 使用技能 |
-|------|---------|
-| 浏览聊天记录、搜索群聊、群信息/成员管理、Reaction/Pin/删除/获取消息 | **feishu-cli-chat**（本技能） |
-| 发送消息、回复、转发/合并转发 | feishu-cli-msg |
-| 搜索文档/应用、高级消息搜索（多条件筛选） | feishu-cli-search |
-| 表格、日历、任务、文件、知识库等其他模块 | feishu-cli-toolkit |
-| OAuth 登录、Token 管理 | feishu-cli-auth |
+1. 保存 JSON 到临时文件再分析，避免长消息刷屏。
+2. 文本内容通常在 `body.content` 里，需按 `msg_type` 解析 JSON 字符串。
+3. `sender_names` 已自动给出 open_id 到姓名的映射，优先用它展示发送者。

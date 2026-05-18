@@ -2,11 +2,11 @@
 name: feishu-cli-search
 description: >-
   搜索飞书云文档、消息和应用。当用户请求"搜索文档"、"搜索消息"、"搜索应用"、"找文档"、
-  "找一下"、"search docs"、"查找飞书文档"、"有没有关于 xxx 的文档"时使用。
+  "search docs"、"查找飞书文档"、"有没有关于 xxx 的飞书文档"时使用。
   也适用于：用户想查找某个主题的飞书文档或 Wiki、按关键词检索消息记录、查找内部应用。
   搜索 API 必须使用 User Access Token，本技能包含完整的认证前置检查流程。
 user-invocable: true
-allowed-tools: Bash
+allowed-tools: Bash(feishu-cli search:*), Bash(feishu-cli auth:*), Read
 ---
 
 # 飞书搜索
@@ -132,11 +132,11 @@ feishu-cli search docs "产品需求" -o json
   "HasMore": true,
   "ResUnits": [
     {
-      "DocsToken": "C29IdflghosjksxWKvNutR3UsXe",
+      "DocsToken": "doc_token_xxx",
       "DocsType": "docx",
       "Title": "产品需求文档 - Q2",
-      "OwnerID": "ou_46bb48e13f9ff5cfd4b60edae00678cd",
-      "URL": "https://feishu.cn/docx/C29IdflghosjksxWKvNutR3UsXe"
+      "OwnerID": "ou_xxx",
+      "URL": "https://feishu.cn/docx/doc_token_xxx"
     }
   ]
 }

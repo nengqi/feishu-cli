@@ -146,6 +146,30 @@ func TestExtractGFMTables_SkipsFencedCodeBlock(t *testing.T) {
 	}
 }
 
+func TestExtractGFMTables_SkipsTildeFencedCodeBlock(t *testing.T) {
+	md := "~~~markdown\n| fake | table |\n| --- | --- |\n| no | import |\n~~~\n\n| real | table |\n| --- | --- |\n| yes | import |\n"
+	tables := extractGFMTables(md)
+	if len(tables) != 1 {
+		t.Fatalf("expected 1 real table, got %d: %#v", len(tables), tables)
+	}
+	want := [][]string{{"real", "table"}, {"yes", "import"}}
+	if !reflect.DeepEqual(tables[0], want) {
+		t.Errorf("table mismatch: got %v want %v", tables[0], want)
+	}
+}
+
+func TestExtractGFMTables_SkipsIndentedCodeBlock(t *testing.T) {
+	md := "    | fake | table |\n    | --- | --- |\n    | no | import |\n\n| real | table |\n| --- | --- |\n| yes | import |\n"
+	tables := extractGFMTables(md)
+	if len(tables) != 1 {
+		t.Fatalf("expected 1 real table, got %d: %#v", len(tables), tables)
+	}
+	want := [][]string{{"real", "table"}, {"yes", "import"}}
+	if !reflect.DeepEqual(tables[0], want) {
+		t.Errorf("table mismatch: got %v want %v", tables[0], want)
+	}
+}
+
 func TestExtractGFMTables_HeaderSeparatorColumnMismatch(t *testing.T) {
 	md := `| a | b | c |
 | --- | --- |
@@ -168,9 +192,9 @@ func TestExtractGFMTables_RaggedRowsPad(t *testing.T) {
 		t.Fatalf("expected 1 table, got %d", len(tables))
 	}
 	want := [][]string{
-		{"a", "b", "c"},
-		{"1", "2", ""},  // 短行补空
-		{"3", "4", "5"}, // 长行截断到 colCount=3
+		{"a", "b", "c", ""},
+		{"1", "2", "", ""},   // 短行补空
+		{"3", "4", "5", "6"}, // 长行扩列表头，避免截断
 	}
 	if !reflect.DeepEqual(tables[0], want) {
 		t.Errorf("ragged rows mismatch:\n got: %v\nwant: %v", tables[0], want)
@@ -305,7 +329,7 @@ func TestPadRow(t *testing.T) {
 	}{
 		{"exact fit", []string{"a", "b", "c"}, 3, []string{"a", "b", "c"}},
 		{"pad short", []string{"a"}, 3, []string{"a", "", ""}},
-		{"truncate long", []string{"a", "b", "c", "d"}, 2, []string{"a", "b"}},
+		{"keep long", []string{"a", "b", "c", "d"}, 2, []string{"a", "b", "c", "d"}},
 		{"empty input", nil, 3, []string{"", "", ""}},
 		{"zero cols", []string{"a"}, 0, []string{}},
 	}
@@ -316,6 +340,20 @@ func TestPadRow(t *testing.T) {
 				t.Errorf("padRow(%v, %d) = %v, want %v", tt.row, tt.col, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestValidateSheetImportMDSize_RejectsOverlongCell(t *testing.T) {
+	rows := [][]string{
+		{"header"},
+		{strings.Repeat("字", maxSheetImportMDCellChars+1)},
+	}
+	err := validateSheetImportMDSize(rows)
+	if err == nil {
+		t.Fatal("expected overlong cell to be rejected")
+	}
+	if !strings.Contains(err.Error(), "R2C1") || !strings.Contains(err.Error(), fmt.Sprint(maxSheetImportMDCellChars)) {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

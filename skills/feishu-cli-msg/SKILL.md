@@ -2,13 +2,11 @@
 name: feishu-cli-msg
 description: >-
   飞书消息发送。发送消息（text/post/interactive 卡片等 11 种类型）、回复消息、
-  转发/合并转发、消息加急、批量获取消息、下载消息资源（图片/文件）、获取话题回复列表。
+  转发/合并转发、消息加急、下载消息资源（图片/文件）。
   使用 App Token（Bot 身份），无需登录。
-  当用户请求"发消息"、"回复"、"转发"、"合并转发"、"消息加急"、"发通知"、"发卡片"、
-  "给某人发飞书消息"、"通知某人"、"批量获取消息"、"下载消息资源"、
-  "下载消息图片"、"下载消息文件"、"话题回复"、"thread 消息"时使用，
-  即使没有明确说"发送"，只要意图是把信息传达给某人，都应使用此技能。
-  注意：Reaction/Pin/获取消息详情/消息历史/搜索群聊/群聊管理（需 User Token），
+  当用户明确请求通过飞书即时消息/Bot 消息发送、回复、转发、合并转发、加急、
+  下载消息图片或文件时使用。邮件走 feishu-cli-mail；文档评论/共享权限走对应 skill。
+  注意：Reaction/Pin/获取消息详情/批量获取消息/话题回复/消息历史/搜索群聊/群聊管理（需 User Token），
   以及消息删除（默认 App Token 用于 Bot 自撤回，可选 User Token 让管理员撤回他人）
   请使用 feishu-cli-chat 技能。
   发送结构化或美观的 interactive 卡片（带折叠面板、图表、按钮组、人员卡等）
@@ -16,12 +14,12 @@ description: >-
   避免手搓易错的 JSON），再回到本技能用 --msg-type interactive 发送。
 argument-hint: <receive_id> [--msg-type <type>]
 user-invocable: true
-allowed-tools: Bash, Read, Write
+allowed-tools: Bash(feishu-cli msg:*), Bash(feishu-cli media:*), Bash(feishu-cli file:*), Read, Write
 ---
 
-# 飞书消息发送与互动技能
+# 飞书消息发送技能
 
-通过 feishu-cli 发送飞书消息、回复、转发、Reaction、Pin 等互动操作。
+通过 feishu-cli 发送飞书消息、回复、转发、合并转发、加急和下载消息资源。
 
 > **feishu-cli**：如尚未安装，请前往 [riba2534/feishu-cli](https://github.com/riba2534/feishu-cli) 获取安装方式。
 
@@ -207,20 +205,22 @@ post 支持的 tag 类型：
 
 卡片消息有三种发送方式：
 
-**方式一：完整 Card JSON（推荐，最灵活）**
+**方式一：完整 Card JSON（仅发送；复杂卡片先用 feishu-cli-card 生成）**
 
 ```bash
 cat > /tmp/card.json << 'EOF'
 {
+  "schema": "2.0",
   "header": {
     "template": "blue",
     "title": {"tag": "plain_text", "content": "任务完成通知"}
   },
-  "elements": [
-    {"tag": "markdown", "content": "**项目**: feishu-cli\n**状态**: 已完成\n**负责人**: <at id=all></at>"},
-    {"tag": "hr"},
-    {"tag": "note", "elements": [{"tag": "plain_text", "content": "由 CI/CD 自动发送"}]}
-  ]
+  "body": {
+    "direction": "vertical",
+    "elements": [
+      {"tag": "markdown", "content": "**项目**: feishu-cli\n**状态**: 已完成\n**负责人**: <at id=all></at>"}
+    ]
+  }
 }
 EOF
 
@@ -261,353 +261,13 @@ feishu-cli msg send \
   --content '{"type":"card","data":{"card_id":"7371713483664506900"}}'
 ```
 
-#### Card JSON 结构（v1 vs v2）
+#### Interactive 卡片职责边界
 
-**v1 格式（推荐，兼容性好）**：
+本技能只负责发送 interactive 消息，不负责设计卡片 JSON。
 
-```json
-{
-  "header": {"template": "blue", "title": {"tag": "plain_text", "content": "标题"}},
-  "elements": [...]
-}
-```
-
-**v2 格式（更多组件）**：
-
-```json
-{
-  "schema": "2.0",
-  "header": {"template": "blue", "title": {"tag": "plain_text", "content": "标题"}},
-  "body": {"direction": "vertical", "elements": [...]}
-}
-```
-
-v2 额外支持：table（表格）、chart（图表）、form_container（表单）、column_set（多列布局）等高级组件。对于简单通知，v1 足够；需要复杂布局时用 v2。
-
-#### header 颜色模板
-
-| 颜色值 | 色系 | 推荐场景 |
-|--------|------|---------|
-| blue | 蓝色 | 通用通知、信息 |
-| wathet | 浅蓝 | 轻量提示 |
-| turquoise | 青色 | 进行中状态 |
-| green | 绿色 | 成功、完成 |
-| yellow | 黄色 | 注意、提醒 |
-| orange | 橙色 | 警告 |
-| red | 红色 | 错误、紧急 |
-| carmine | 深红 | 严重告警 |
-| violet | 紫罗兰 | 特殊标记 |
-| purple | 紫色 | 自定义分类 |
-| indigo | 靛蓝 | 深色主题 |
-| grey | 灰色 | 已处理、归档 |
-
-**语义化推荐**：绿=成功 / 蓝=通知 / 橙=警告 / 红=错误 / 灰=已处理
-
-#### 常用组件速查
-
-**内容组件**：
-
-| 组件 | tag | 说明 |
-|------|-----|------|
-| Markdown | `markdown` | 支持 lark_md 语法，最常用 |
-| 分割线 | `hr` | 水平分割线 |
-| 备注 | `note` | 底部灰色小字备注 |
-| 图片 | `img` | 图片展示 |
-
-**布局组件**：
-
-| 组件 | tag | 说明 |
-|------|-----|------|
-| 文本+附加 | `div` | 文本块，可含 fields（多列）和 extra（右侧附加） |
-| 多列布局 | `column_set`（v2） | 横向分栏布局 |
-
-**交互组件**：
-
-| 组件 | tag | 说明 |
-|------|-----|------|
-| 按钮 | `button` | default/primary/danger 三种类型 |
-| 下拉选择 | `select_static` | 静态下拉菜单 |
-| 日期选择 | `date_picker` | 日期选择器 |
-| 折叠菜单 | `overflow` | 更多操作菜单 |
-
-#### 卡片 Markdown 语法（lark_md）
-
-卡片内 `markdown` 组件使用 `lark_md` 语法，与标准 Markdown 有差异：
-
-```markdown
-# 支持的语法
-**加粗** *斜体* ~~删除线~~ [链接](url) `行内代码`
-![图片](img_v2_xxx)
-
-# 特有语法
-<font color='green'>绿色文字</font>
-<font color='red'>红色文字</font>
-<font color='grey'>灰色文字</font>
-<at id=ou_xxx></at>
-<at id=all></at>
-```
-
-**注意**：lark_md 的 `<font color>` 仅支持 green/red/grey 三种颜色。
-
-### 常用卡片模板
-
-#### 模板 1：简单通知卡片
-
-```json
-{
-  "header": {
-    "template": "blue",
-    "title": {"tag": "plain_text", "content": "通知标题"}
-  },
-  "elements": [
-    {"tag": "markdown", "content": "通知内容，支持 **加粗** 和 [链接](https://example.com)"},
-    {"tag": "note", "elements": [{"tag": "plain_text", "content": "来自自动化工具"}]}
-  ]
-}
-```
-
-#### 模板 2：告警卡片（多列 + 按钮）
-
-```json
-{
-  "header": {
-    "template": "red",
-    "title": {"tag": "plain_text", "content": "告警通知"}
-  },
-  "elements": [
-    {
-      "tag": "div",
-      "fields": [
-        {"is_short": true, "text": {"tag": "lark_md", "content": "**服务**\napi-gateway"}},
-        {"is_short": true, "text": {"tag": "lark_md", "content": "**级别**\n<font color='red'>P0</font>"}},
-        {"is_short": true, "text": {"tag": "lark_md", "content": "**时间**\n2024-01-01 10:00"}},
-        {"is_short": true, "text": {"tag": "lark_md", "content": "**影响**\n<font color='red'>用户无法登录</font>"}}
-      ]
-    },
-    {"tag": "hr"},
-    {
-      "tag": "action",
-      "actions": [
-        {"tag": "button", "text": {"tag": "plain_text", "content": "查看详情"}, "type": "primary", "url": "https://example.com/alert/123"},
-        {"tag": "button", "text": {"tag": "plain_text", "content": "忽略"}, "type": "default"}
-      ]
-    }
-  ]
-}
-```
-
-#### 模板 3：进度报告卡片
-
-```json
-{
-  "header": {
-    "template": "green",
-    "title": {"tag": "plain_text", "content": "构建报告"}
-  },
-  "elements": [
-    {"tag": "markdown", "content": "**项目**: feishu-cli\n**分支**: main\n**提交**: abc1234"},
-    {"tag": "hr"},
-    {"tag": "markdown", "content": "<font color='green'>Tests: 42/42 passed</font>\n<font color='green'>Build: Success</font>\n<font color='grey'>Duration: 3m 25s</font>"},
-    {"tag": "hr"},
-    {
-      "tag": "action",
-      "actions": [
-        {"tag": "button", "text": {"tag": "plain_text", "content": "查看日志"}, "type": "default", "url": "https://ci.example.com/build/123"}
-      ]
-    },
-    {"tag": "note", "elements": [{"tag": "plain_text", "content": "CI/CD Pipeline #123"}]}
-  ]
-}
-```
-
-#### 模板 4：文档操作通知
-
-```json
-{
-  "header": {
-    "template": "turquoise",
-    "title": {"tag": "plain_text", "content": "文档操作通知"}
-  },
-  "elements": [
-    {
-      "tag": "div",
-      "fields": [
-        {"is_short": true, "text": {"tag": "lark_md", "content": "**操作类型**\n创建文档"}},
-        {"is_short": true, "text": {"tag": "lark_md", "content": "**状态**\n<font color='green'>成功</font>"}}
-      ]
-    },
-    {"tag": "markdown", "content": "**文档标题**: 周报 2024-W01\n**文档链接**: [点击查看](https://xxx.feishu.cn/docx/abc123)"},
-    {"tag": "note", "elements": [{"tag": "plain_text", "content": "由 feishu-cli 自动创建"}]}
-  ]
-}
-```
-
-#### 模板 5：审批确认卡片（多按钮）
-
-```json
-{
-  "header": {
-    "template": "orange",
-    "title": {"tag": "plain_text", "content": "审批请求"}
-  },
-  "elements": [
-    {"tag": "markdown", "content": "**申请人**: 张三\n**申请类型**: 服务器扩容\n**说明**: 线上流量增长，需要增加 2 台服务器"},
-    {"tag": "hr"},
-    {
-      "tag": "action",
-      "actions": [
-        {"tag": "button", "text": {"tag": "plain_text", "content": "批准"}, "type": "primary"},
-        {"tag": "button", "text": {"tag": "plain_text", "content": "拒绝"}, "type": "danger"},
-        {"tag": "button", "text": {"tag": "plain_text", "content": "查看详情"}, "type": "default", "url": "https://example.com/approval/456"}
-      ]
-    }
-  ]
-}
-```
-
-### 自动上传本地图片（推荐）
-
-发送 post 或 interactive 卡片消息时，**推荐使用 `--upload-images` flag** 自动解析并上传内容中的本地图片，无需手动预上传：
-
-```bash
-# 卡片消息中嵌入本地图片（自动上传）
-cat > /tmp/card.json << 'EOF'
-{
-  "header": {
-    "template": "blue",
-    "title": {"tag": "plain_text", "content": "项目报告"}
-  },
-  "elements": [
-    {"tag": "markdown", "content": "截图：\n![截图](./screenshot.png)"},
-    {"tag": "note", "elements": [{"tag": "plain_text", "content": "自动上传本地图片"}]}
-  ]
-}
-EOF
-
-feishu-cli msg send \
-  --receive-id-type email \
-  --receive-id user@example.com \
-  --msg-type interactive \
-  --content-file /tmp/card.json \
-  --upload-images
-```
-
-**最佳实践**：
-- 相对路径基于 `--content-file` 所在目录解析（与 `doc import` 保持一致）
-- 支持 Markdown 语法：`![alt](local/path.png)`
-- 支持 img 标签：`{"tag":"img","image_key":"local/path.png","width":100,"height":100}`
-- 自动识别 `img_` 开头的远程图片和已上传图片，跳过上传
-
-**限制**：
-- 仅对 post 和 interactive 消息类型有效
-- 图片大小限制 10MB
-
-## 回复消息
-
-回复指定消息，支持与 `msg send` 相同的消息类型和输入方式。
-
-```bash
-# 文本回复
-feishu-cli msg reply <message_id> --text "收到，我来处理"
-
-# 卡片回复
-feishu-cli msg reply <message_id> --msg-type interactive --content-file /tmp/card.json
-
-# 富文本回复
-feishu-cli msg reply <message_id> --msg-type post --content-file /tmp/post.json
-```
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `--msg-type` | 消息类型 | `text` |
-| `--text` / `--content` / `--content-file` | 消息内容（三选一） | 必填 |
-
-## 消息加急
-
-对指定用户发送消息加急通知，支持应用内加急、电话加急和短信加急三种方式。
-
-```bash
-# 应用内加急（默认）
-feishu-cli msg urgent <message_id> \
-  --user-ids ou_xxx,ou_yyy \
-  --user-id-type open_id
-
-# 电话加急
-feishu-cli msg urgent <message_id> \
-  --urgent-type phone \
-  --user-ids u_xxx,u_yyy \
-  --user-id-type user_id
-
-# 短信加急
-feishu-cli msg urgent <message_id> \
-  --urgent-type sms \
-  --user-ids on_xxx,on_yyy \
-  --user-id-type union_id
-```
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `<message_id>` | 消息 ID | 必填 |
-| `--urgent-type` | 加急类型：`app`/`phone`/`sms` | `app` |
-| `--user-ids` | 目标用户 ID 列表（逗号分隔） | 必填 |
-| `--user-id-type` | 用户 ID 类型：`open_id`/`user_id`/`union_id` | `open_id` |
-
-### 加急类型说明
-
-| 类型 | 说明 | 权限 |
-|------|------|------|
-| `app` | 应用内加急通知 | `im:message.urgent` |
-| `phone` | 电话加急（需审批） | `im:message.urgent:phone` |
-| `sms` | 短信加急（需审批） | `im:message.urgent:sms` |
-
-**注意**：
-- 电话和短信加急需要单独申请权限并通过审批
-- 加急通知会向指定用户发送强提醒
-- 建议仅在紧急情况下使用
-
-## 合并转发
-
-将多条消息合并转发给指定接收者。
-
-```bash
-feishu-cli msg merge-forward \
-  --receive-id user@example.com \
-  --receive-id-type email \
-  --message-ids om_xxx,om_yyy,om_zzz
-```
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `--receive-id` | 接收者 ID | 必填 |
-| `--receive-id-type` | 接收者类型 | `email` |
-| `--message-ids` | 消息 ID 列表（逗号分隔） | 必填 |
-
-> **读取合并转发的子内容** 走 **feishu-cli-chat** 技能：`msg get/list/history/mget` 已默认自动展开 `merge_forward` 容器的子消息（递归到底）。
-
-## Reaction / Pin / 获取消息详情 / 删除消息
-
-> 以下命令均已移至 **feishu-cli-chat** 技能。Token 要求各异：
->
-> 需要 **User Token**（先 `auth login`）：
-> - `msg reaction add/remove/list` — 表情回应
-> - `msg pin/unpin` — 置顶/取消置顶
-> - `msg pins` — 查看群内置顶消息
-> - `msg get` — 获取消息详情
->
-> Token 可选：
-> - `msg delete` — 删除消息：默认 App Token 撤回 Bot 自己 24h 内消息（无需登录）；可选 `--user-access-token` 让群管理员撤回他人消息
->
-> 请使用 feishu-cli-chat 技能操作以上功能。
-
-## 其他消息命令
-
-### 转发消息
-
-```bash
-feishu-cli msg forward <message_id> \
-  --receive-id user@example.com \
-  --receive-id-type email
-```
+- 结构化或美观卡片必须先使用 feishu-cli-card 生成 v2 JSON（schema=2.0）。
+- 本技能发送：feishu-cli msg send --msg-type interactive --content-file <card.json>。
+- 不要在本技能内新写 v1 elements/action/note 卡片模板；旧 v1 示例仅用于历史兼容排查。
 
 ## 执行流程
 
@@ -616,15 +276,9 @@ feishu-cli msg forward <message_id> \
 1. **确定接收者**：默认 `user@example.com`（email），或从上下文获取
 2. **选择消息类型**：
    - 用户明确指定类型 → 使用指定类型
-   - **默认使用 `interactive`（卡片消息）** → 根据内容语义选择 header 颜色和合适的组件布局
-   - 仅在用户明确要求纯文本/富文本时 → 使用 `text` / `post`
-3. **构造卡片内容**：
-   - 根据消息语义选择 header 颜色（绿=成功、红=错误、橙=警告、蓝=通知、灰=归档）
-   - 使用 `markdown` 组件承载主要内容
-   - 有多个键值对时使用 `div` + `fields` 多列布局
-   - 需要操作链接时添加 `action` + `button`
-   - 底部添加 `note` 备注来源
-   - 将 JSON 写入临时文件后用 `--content-file` 发送
+   - 结构化或美观通知 → 先用 `feishu-cli-card` 构造 JSON，再用 `interactive` 发送
+   - 用户明确要求纯文本/富文本，或内容很短 → 使用 `text` / `post`
+3. **准备内容**：纯文本直接传 `--text`；卡片 JSON 使用 `--content-file`；文件/图片使用 `--file` / `--image`
 4. **发送并检查结果**：执行命令，确认返回 message_id
 
 ## 权限要求
@@ -660,28 +314,7 @@ feishu-cli msg forward <message_id> \
 
 ## 批量获取消息
 
-一次获取多条消息的详细信息。
-
-```bash
-feishu-cli msg mget --message-ids om_xxx,om_yyy,om_zzz
-# 默认 user_card_content，CLI 自动提取 card_texts 字段方便阅读
-
-# 显式拿原始 schema 2.0 userDSL（默认行为，等价于不传）
-feishu-cli msg mget --message-ids om_xxx,om_yyy --card-content-type user
-
-# 返回平台内部完整 cardDSL（含默认补全字段，调试用）
-feishu-cli msg mget --message-ids om_xxx,om_yyy --card-content-type raw
-
-# 回到 OAPI 旧的"渲染版/降级版"行为（部分卡片可能只返回"请升级客户端"占位）
-feishu-cli msg mget --message-ids om_xxx,om_yyy --card-content-type rendered
-```
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `--message-ids` | 消息 ID 列表（逗号分隔） | 必填 |
-| `--card-content-type` | interactive 卡片返回格式：`user` / `user_card_content`（userDSL）/ `raw` / `raw_card_content`（cardDSL）/ `rendered`（OAPI 原渲染版） | `user`（v1.26+） |
-
-> **v1.26+ 默认改为 `user`**：不传 `--card-content-type` 时 CLI 默认请求 `user_card_content` 并额外提取 `card_texts` 字段，避免某些卡片只返回"请升级客户端"降级内容。需要旧行为请显式传 `--card-content-type rendered`。**`--card-content-type` 同样适用于 `msg get` / `msg list` / `msg history`**：仅对 interactive 卡片消息生效，其他 msg_type 不受影响。短别名 `user` / `raw` 与完整 OAPI 名 `user_card_content` / `raw_card_content` 等价，CLI 都接受。`user_card_content` = userDSL（开发者构建卡片时的 schema 2.0 JSON）；`raw_card_content` = cardDSL（平台内部完整描述，含默认补全字段）。
+> 读消息详情和批量获取消息请使用 **feishu-cli-chat** 技能。`msg get/list/history/mget` 默认请求 `user_card_content` 并额外提取 `card_texts`，该行为和排错说明维护在 chat skill 中，避免发送与读取职责混在一起。
 
 ## 下载消息资源
 
@@ -739,30 +372,7 @@ feishu-cli msg reply om_xxx --text "这里开个话题" --reply-in-thread
 
 ### 话题回复列表
 
-获取话题中的所有回复消息：
-
-```bash
-# 获取话题回复
-feishu-cli msg thread-messages <thread_id>
-
-# 指定排序和分页
-feishu-cli msg thread-messages <thread_id> \
-  --sort ByCreateTimeAsc \
-  --page-size 20
-
-# 指定时间范围
-feishu-cli msg thread-messages <thread_id> \
-  --start-time 1704067200000 \
-  --end-time 1704153600000
-```
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `<thread_id>` | 话题 ID | 必填 |
-| `--sort` | 排序方式 `ByCreateTimeAsc`/`ByCreateTimeDesc` | — |
-| `--page-size` | 每页数量 | 50 |
-| `--start-time` | 起始时间（毫秒时间戳） | — |
-| `--end-time` | 结束时间（毫秒时间戳） | — |
+获取话题回复属于读取消息，请使用 **feishu-cli-chat** 技能。发送话题内消息仍使用本技能的 `msg send --thread-id`。
 
 ## 参考文档
 

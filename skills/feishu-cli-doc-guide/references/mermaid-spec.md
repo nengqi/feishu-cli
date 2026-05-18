@@ -293,7 +293,7 @@ classDiagram
 
 ### 2.4 stateDiagram-v2（状态图）
 
-**diagram_type**: 0 (auto)
+**导入策略**：`doc import` 默认 auto；直接 `board import` 时可显式传 `--diagram-type state`。
 
 > 必须使用 `stateDiagram-v2`，不要使用旧版 `stateDiagram`。
 

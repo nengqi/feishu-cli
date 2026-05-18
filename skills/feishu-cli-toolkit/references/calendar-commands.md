@@ -44,9 +44,9 @@ feishu-cli calendar create-event \
 
 ```bash
 feishu-cli calendar list-events \
-  --calendar-id <id> \
-  [--start "2024-01-01T00:00:00+08:00"] \
-  [--end "2024-01-31T23:59:59+08:00"] \
+  <calendar_id> \
+  [--start-time "2024-01-01T00:00:00+08:00"] \
+  [--end-time "2024-01-31T23:59:59+08:00"] \
   [--page-size 50] \
   [--page-token <token>]
 ```
@@ -54,15 +54,15 @@ feishu-cli calendar list-events \
 ### 获取日程详情
 
 ```bash
-feishu-cli calendar get-event --calendar-id <id> --event-id <event_id>
+feishu-cli calendar get-event <calendar_id> <event_id>
 ```
 
 ### 更新日程
 
 ```bash
 feishu-cli calendar update-event \
-  --calendar-id <id> \
-  --event-id <event_id> \
+  <calendar_id> \
+  <event_id> \
   [--summary "新标题"] \
   [--start "2024-01-21T15:00:00+08:00"] \
   [--end "2024-01-21T16:00:00+08:00"] \
@@ -73,7 +73,7 @@ feishu-cli calendar update-event \
 ### 删除日程
 
 ```bash
-feishu-cli calendar delete-event --calendar-id <id> --event-id <event_id>
+feishu-cli calendar delete-event <calendar_id> <event_id>
 ```
 
 ## 搜索日程

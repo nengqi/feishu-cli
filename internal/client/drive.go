@@ -780,7 +780,7 @@ func uploadFileMultipart(filePath, parentToken, fileName string, fileSize int, u
 		return "", fmt.Errorf("分片上传准备返回数据异常: upload_id=%s, block_size=%d, block_num=%d", uploadID, blockSize, blockNum)
 	}
 
-	fmt.Printf("分片上传: 文件大小 %s, 分片大小 %s, 共 %d 个分片\n",
+	fmt.Fprintf(os.Stderr, "分片上传: 文件大小 %s, 分片大小 %s, 共 %d 个分片\n",
 		formatSize(fileSize), formatSize(blockSize), blockNum)
 
 	// 打开一次文件，通过 io.SectionReader 为每个分片提供无状态视图，避免每次重试都重新 open/seek
@@ -827,7 +827,7 @@ func uploadFileMultipart(filePath, parentToken, fileName string, fileSize int, u
 			}
 
 			if attempt < maxPartRetries {
-				fmt.Printf("  第 %d/%d 片上传失败，重试 (%d/%d)...\n", seq+1, blockNum, attempt, maxPartRetries)
+				fmt.Fprintf(os.Stderr, "  第 %d/%d 片上传失败，重试 (%d/%d)...\n", seq+1, blockNum, attempt, maxPartRetries)
 				time.Sleep(time.Duration(attempt) * time.Second)
 			}
 		}
@@ -836,7 +836,7 @@ func uploadFileMultipart(filePath, parentToken, fileName string, fileSize int, u
 			return "", lastErr
 		}
 
-		fmt.Printf("  分片 %d/%d 上传完成 (%s)\n", seq+1, blockNum, formatSize(int(partSize)))
+		fmt.Fprintf(os.Stderr, "  分片 %d/%d 上传完成 (%s)\n", seq+1, blockNum, formatSize(int(partSize)))
 	}
 
 	// 第三步：完成上传

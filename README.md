@@ -154,7 +154,7 @@ curl -fsSL https://raw.githubusercontent.com/riba2534/feishu-cli/main/install.sh
 | Linux ARM64 | `feishu-cli_*_linux-arm64.tar.gz` |
 | macOS Intel | `feishu-cli_*_darwin-amd64.tar.gz` |
 | macOS Apple Silicon | `feishu-cli_*_darwin-arm64.tar.gz` |
-| Windows x64 | `feishu-cli_*_windows_amd64.tar.gz` |
+| Windows x64 | `feishu-cli_*_windows-amd64.tar.gz` |
 
 ```bash
 tar -xzf feishu-cli_*_linux-amd64.tar.gz
@@ -308,6 +308,7 @@ feishu-cli wiki spaces                              # 列出知识空间
 feishu-cli wiki get <node_token>                    # 获取节点
 feishu-cli wiki nodes <space_id>                    # 列出节点
 feishu-cli wiki export <node_token> -o doc.md       # 导出为 Markdown
+feishu-cli wiki export-tree <node_token> -o ./backup  # 递归导出知识库子树
 feishu-cli wiki create --space-id <id> --title "新节点"
 feishu-cli wiki move-docs <obj_token> --space-id <id>  # 移动云空间文档至知识空间
 feishu-cli wiki space-get <space_id>                # 获取知识空间详情
@@ -371,7 +372,7 @@ feishu-cli msg history --user-email user@example.com --page-size 50 -o json
 feishu-cli msg history --user-id ou_xxx --page-size 50 -o json
 
 # 输出 JSON 自动携带顶层 sender_names 映射（open_id → 姓名），AI Agent 可直接引用
-# {"Items":[...], "sender_names":{"ou_abc":"张三","ou_def":"李四"}}
+# {"items":[...], "sender_names":{"ou_abc":"张三","ou_def":"李四"}}
 
 # 转发消息
 feishu-cli msg forward <message_id> --receive-id <id> --receive-id-type email
@@ -459,7 +460,7 @@ feishu-cli chat member remove <chat_id> --id-list id1,id2
 ```bash
 # 基础操作
 feishu-cli file list [folder_token]
-feishu-cli file mkdir --name "新文件夹" --folder-token <token>
+feishu-cli file mkdir "新文件夹" --parent <folder_token>
 
 # 上传 / 下载
 feishu-cli file upload local_file.pdf --parent FOLDER_TOKEN
@@ -642,14 +643,14 @@ feishu-cli tasklist delete <tasklist_guid>
 
 # 画板（v1.25+ 新增 5 个子命令 + Mermaid 本地引擎 + Markdown ```svg fence 自动识别）
 feishu-cli board create-notes <whiteboard_id> nodes.json -o json  # 精排绘图（JSON 控制坐标、颜色、连线）
-feishu-cli board import <whiteboard_id> --source-type content -c "graph TD; A-->B" --syntax mermaid  # 服务端渲染
+feishu-cli board import <whiteboard_id> "graph TD; A-->B" --source-type content --syntax mermaid --diagram-type flowchart  # 服务端渲染
 feishu-cli board import <whiteboard_id> diagram.mmd --syntax mermaid --engine local  # 本地引擎（whiteboard-cli 翻译，每个节点可单独编辑）
 feishu-cli board import <whiteboard_id> diagram.puml --syntax plantuml  # 导入 PlantUML
 feishu-cli board svg-import <whiteboard_id> drawing.svg            # 单 svg 节点装饰（图标/印章 < 2KB）
 feishu-cli board clone <source_id> <target_id> --batch-size 10    # 克隆画板（含 connector ID 重映射 + 分批节流）
 feishu-cli board upload-image <whiteboard_id> photo.png           # 上传本地图片为 image 节点（自动推断像素尺寸）
 feishu-cli board lint <whiteboard_id>                              # 几何质检（重叠/字号一致性/容量/综合评分）
-feishu-cli board export-code <whiteboard_id> --merge --output design.svg  # 反向导出 SVG（按 z_index 排序）
+feishu-cli board export-code <whiteboard_id> --merge --output-path design.svg  # 反向导出 SVG（按 z_index 排序）
 feishu-cli board update <whiteboard_id> nodes.json --overwrite --snapshot old.json  # 覆盖更新+快照备份
 feishu-cli board nodes <whiteboard_id>                            # 获取画板所有节点
 feishu-cli board image <whiteboard_id> output.png                 # 下载画板截图
@@ -659,7 +660,7 @@ python3 skills/feishu-cli-board/scripts/svg_to_board.py drawing.svg <whiteboard_
 
 # 评论
 feishu-cli comment list <file_token> --type docx
-feishu-cli comment add <file_token> --type docx --content "评论内容"
+feishu-cli comment add <file_token> --type docx --text "评论内容"
 feishu-cli comment resolve <file_token> <comment_id> --type docx
 feishu-cli comment unresolve <file_token> <comment_id> --type docx
 feishu-cli comment reply list <file_token> <comment_id> --type docx
@@ -752,6 +753,7 @@ feishu-cli doc media-download <file_token> --doc-token DOC_TOKEN --doc-type docx
 # 电子表格导出
 feishu-cli sheet export <token> -o output.xlsx
 feishu-cli sheet export <token> --format csv --sheet-id SHEET_ID -o output.csv
+feishu-cli sheet export <token_or_url> --format markdown -o output.md
 
 # 用户
 feishu-cli user info <user_id>

@@ -10,7 +10,6 @@ var defaultLoginScopes = []string{
 	"auth:user.id:read",
 }
 
-
 // NormalizeScopeList 规范化 scope 列表：按空白切分、去重多余空格、重新用单空格拼接。
 func NormalizeScopeList(scope string) string {
 	return strings.Join(UniqueScopeList(scope), " ")
@@ -29,7 +28,6 @@ func DefaultLoginScopes() string {
 func DefaultLoginScopeList() []string {
 	return append([]string(nil), defaultLoginScopes...)
 }
-
 
 // UniqueScopeList splits a scope string into a de-duplicated ordered slice.
 func UniqueScopeList(scope string) []string {

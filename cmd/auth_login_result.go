@@ -34,13 +34,13 @@ func buildLoginScopeSummary(requestedScope, grantedScope string) *loginScopeSumm
 func buildAuthorizationCompleteEvent(token *auth.TokenStore, summary *loginScopeSummary) map[string]any {
 	refreshPresent := token.RefreshToken != ""
 	event := map[string]any{
-		"event":                  "authorization_complete",
-		"expires_at":             token.ExpiresAt.Format("2006-01-02T15:04:05+08:00"),
-		"scope":                  token.Scope,
-		"requested_scopes":       emptyIfNil(summary.Requested),
-		"granted_scopes":         emptyIfNil(summary.Granted),
-		"missing_scopes":         emptyIfNil(summary.Missing),
-		"refresh_token_present":  refreshPresent,
+		"event":                 "authorization_complete",
+		"expires_at":            token.ExpiresAt.Format("2006-01-02T15:04:05+08:00"),
+		"scope":                 token.Scope,
+		"requested_scopes":      emptyIfNil(summary.Requested),
+		"granted_scopes":        emptyIfNil(summary.Granted),
+		"missing_scopes":        emptyIfNil(summary.Missing),
+		"refresh_token_present": refreshPresent,
 	}
 	if !token.RefreshExpiresAt.IsZero() {
 		event["refresh_expires_at"] = token.RefreshExpiresAt.Format("2006-01-02T15:04:05+08:00")

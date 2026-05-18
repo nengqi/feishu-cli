@@ -1180,24 +1180,73 @@ func (c *BlockToMarkdown) convertSheet(block *larkdocx.Block) (string, error) {
 		return "", nil
 	}
 
-	var attrs []string
-	if block.Sheet.Token != nil && *block.Sheet.Token != "" {
-		token := *block.Sheet.Token
-		if idx := strings.Index(token, "_"); idx != -1 {
-			attrs = append(attrs, fmt.Sprintf("token=\"%s\"", token[:idx]))
-			attrs = append(attrs, fmt.Sprintf("id=\"%s\"", token[idx+1:]))
-		} else {
-			attrs = append(attrs, fmt.Sprintf("token=\"%s\"", token))
-		}
-	}
-	if block.Sheet.RowSize != nil && *block.Sheet.RowSize > 0 {
-		attrs = append(attrs, fmt.Sprintf("rows=\"%d\"", *block.Sheet.RowSize))
-	}
-	if block.Sheet.ColumnSize != nil && *block.Sheet.ColumnSize > 0 {
-		attrs = append(attrs, fmt.Sprintf("cols=\"%d\"", *block.Sheet.ColumnSize))
+	fallback := c.formatSheetTag(block.Sheet)
+	if !c.options.ExpandSheets {
+		return fallback, nil
 	}
 
-	return fmt.Sprintf("<sheet %s/>\n", strings.Join(attrs, " ")), nil
+	spreadsheetToken, sheetID := sheetTokenParts(block.Sheet)
+	if spreadsheetToken == "" {
+		return fallback, nil
+	}
+
+	provider := c.options.SheetDataProvider
+	if provider == nil {
+		provider = FetchSheetDataForMarkdown
+	}
+
+	sheets, err := provider(spreadsheetToken, sheetID, c.options.UserAccessToken)
+	if err != nil {
+		return "", fmt.Errorf("电子表格自动展开失败 (token=%s, sheet_id=%s): %w；如需保留引用请使用 --expand-sheets=false", spreadsheetToken, sheetID, err)
+	}
+	if len(sheets) == 0 {
+		return "", fmt.Errorf("电子表格自动展开失败 (token=%s, sheet_id=%s): 未返回工作表数据；如需保留引用请使用 --expand-sheets=false", spreadsheetToken, sheetID)
+	}
+
+	var sb strings.Builder
+	sb.WriteString("<!-- sheet token=\"")
+	sb.WriteString(spreadsheetToken)
+	sb.WriteString("\"")
+	if sheetID != "" {
+		sb.WriteString(" id=\"")
+		sb.WriteString(sheetID)
+		sb.WriteString("\"")
+	}
+	sb.WriteString(" -->\n\n")
+	sb.WriteString(SheetToMarkdown(sheets))
+	return sb.String(), nil
+}
+
+func (c *BlockToMarkdown) formatSheetTag(sheet *larkdocx.Sheet) string {
+	var attrs []string
+	spreadsheetToken, sheetID := sheetTokenParts(sheet)
+	if spreadsheetToken != "" {
+		attrs = append(attrs, fmt.Sprintf("token=\"%s\"", spreadsheetToken))
+	}
+	if sheetID != "" {
+		attrs = append(attrs, fmt.Sprintf("id=\"%s\"", sheetID))
+	}
+	if sheet.RowSize != nil && *sheet.RowSize > 0 {
+		attrs = append(attrs, fmt.Sprintf("rows=\"%d\"", *sheet.RowSize))
+	}
+	if sheet.ColumnSize != nil && *sheet.ColumnSize > 0 {
+		attrs = append(attrs, fmt.Sprintf("cols=\"%d\"", *sheet.ColumnSize))
+	}
+
+	return fmt.Sprintf("<sheet %s/>\n", strings.Join(attrs, " "))
+}
+
+func sheetTokenParts(sheet *larkdocx.Sheet) (string, string) {
+	if sheet == nil || sheet.Token == nil || *sheet.Token == "" {
+		return "", ""
+	}
+
+	token := *sheet.Token
+	if idx := strings.Index(token, "_"); idx != -1 {
+		return token[:idx], token[idx+1:]
+	}
+
+	return token, ""
 }
 
 func (c *BlockToMarkdown) convertChatCard(block *larkdocx.Block) (string, error) {

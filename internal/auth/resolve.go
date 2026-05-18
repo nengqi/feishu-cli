@@ -15,8 +15,8 @@ func logf(format string, a ...any) {
 // 优先级:
 //  1. flagValue（--user-access-token 参数）
 //     - 若 flagValue 等于 token.json 中已过期的 access_token 且 refresh_token 仍有效，
-//       自动刷新并返回新 access_token（写回 token.json）。常见场景：脚本从 token.json
-//       读取 access_token 后传入 --user-access-token，本质是延伸本机身份。
+//     自动刷新并返回新 access_token（写回 token.json）。常见场景：脚本从 token.json
+//     读取 access_token 后传入 --user-access-token，本质是延伸本机身份。
 //  2. FEISHU_USER_ACCESS_TOKEN 环境变量（同样支持本机身份延伸时的自动刷新）
 //  3. token.json（access_token 有效直接返回；过期则用 refresh_token 刷新）
 //  4. configValue（config.yaml 静态配置）

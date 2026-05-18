@@ -113,4 +113,3 @@ func TestAppendRowsLoop_NilProgressOK(t *testing.T) {
 		t.Fatalf("nil progress 应正常，得到 %v", err)
 	}
 }
-

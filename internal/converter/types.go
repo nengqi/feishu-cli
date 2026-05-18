@@ -91,6 +91,9 @@ type ImageInfo struct {
 	LocalPath string
 }
 
+// SheetDataProvider 提供电子表格数据，用于导出 docx 内嵌 Sheet 块。
+type SheetDataProvider func(spreadsheetToken, sheetID, userAccessToken string) ([]*SheetData, error)
+
 // ConvertOptions holds conversion options
 type ConvertOptions struct {
 	DownloadImages      bool
@@ -103,6 +106,8 @@ type ConvertOptions struct {
 	FrontMatter         bool   // 为 true 时，导出时添加 YAML front matter
 	Highlight           bool   // 为 true 时，导出文本颜色和背景色为 HTML span
 	ExpandMentions      bool   // 导出时展开 @用户为友好格式（默认 false，CLI 默认 true）
+	ExpandSheets        bool   // 导出时展开内嵌电子表格为 Markdown 表格
+	SheetDataProvider   SheetDataProvider
 }
 
 // ConvertResult contains converted blocks and table data

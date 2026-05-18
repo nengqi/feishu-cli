@@ -49,7 +49,10 @@ var exportWikiTreeCmd = &cobra.Command{
   feishu-cli wiki export-tree <token> -o ./backup --continue-on-error=false
 
   # 同时下载图片到 assets 目录
-  feishu-cli wiki export-tree <token> -o ./backup --download-images --assets-dir ./backup/assets`,
+  feishu-cli wiki export-tree <token> -o ./backup --download-images --assets-dir ./backup/assets
+
+  # 内嵌 Sheet 读取失败时保留 <sheet/> 引用
+  feishu-cli wiki export-tree <token> -o ./backup --expand-sheets=false`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := config.Validate(); err != nil {
@@ -132,8 +135,8 @@ var exportWikiTreeCmd = &cobra.Command{
 				continue
 			}
 
-			// 导出
-			markdown, err := exportWikiNodeMarkdown(job.Node, userAccessToken, cmd)
+			assetsDirOverride := wikiTreeNodeAssetsDir(cmd, outputDir, job)
+			markdown, err := exportWikiNodeMarkdown(job.Node, userAccessToken, cmd, assetsDirOverride)
 			if err != nil {
 				stats.Failed++
 				stats.Failures = append(stats.Failures, treeFailure{
@@ -170,6 +173,9 @@ var exportWikiTreeCmd = &cobra.Command{
 
 		// 4. 总结
 		printTreeSummary(stats, outputDir)
+		if stats.Failed > 0 {
+			return fmt.Errorf("递归导出完成但有 %d 个节点失败", stats.Failed)
+		}
 		return nil
 	},
 }
@@ -269,15 +275,23 @@ func walkChildren(parent *client.WikiNode, parentDir string, depth, maxDepth int
 func listAllWikiChildren(spaceID, parentToken, userAccessToken string) ([]*client.WikiNode, error) {
 	var all []*client.WikiNode
 	pageToken := ""
+	seenPageTokens := make(map[string]bool)
 	for {
 		nodes, next, hasMore, err := client.ListWikiNodes(spaceID, parentToken, 50, pageToken, userAccessToken)
 		if err != nil {
 			return nil, err
 		}
 		all = append(all, nodes...)
-		if !hasMore || next == "" {
+		if !hasMore {
 			break
 		}
+		if next == "" {
+			return nil, fmt.Errorf("分页返回 has_more=true 但 page_token 为空")
+		}
+		if seenPageTokens[next] {
+			return nil, fmt.Errorf("分页返回重复 page_token: %s", next)
+		}
+		seenPageTokens[next] = true
 		pageToken = next
 	}
 	return all, nil
@@ -342,15 +356,30 @@ func fileExistsAndNonEmpty(path string) bool {
 }
 
 // exportWikiNodeMarkdown 复用现有 export_wiki.go 里的转换逻辑，根据 obj_type 分发。
-func exportWikiNodeMarkdown(node *client.WikiNode, userAccessToken string, cmd *cobra.Command) (string, error) {
+func exportWikiNodeMarkdown(node *client.WikiNode, userAccessToken string, cmd *cobra.Command, assetsDirOverride string) (string, error) {
 	switch node.ObjType {
 	case "docx":
-		return exportDocxToMarkdown(node.ObjToken, userAccessToken, cmd)
+		return exportDocxToMarkdownWithAssets(node.ObjToken, userAccessToken, cmd, assetsDirOverride)
 	case "sheet":
 		return exportSheetToMarkdown(node.ObjToken, node.Title, userAccessToken)
 	default:
 		return "", fmt.Errorf("不支持的节点类型: %s", node.ObjType)
 	}
+}
+
+func wikiTreeNodeAssetsDir(cmd *cobra.Command, outputDir string, job treeJob) string {
+	downloadImages, _ := cmd.Flags().GetBool("download-images")
+	if !downloadImages || job.Node.ObjType != "docx" {
+		return ""
+	}
+
+	baseAssetsDir, _ := cmd.Flags().GetString("assets-dir")
+	rel, err := filepath.Rel(outputDir, job.OutputPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		rel = filepath.Base(job.OutputPath)
+	}
+	stem := strings.TrimSuffix(rel, filepath.Ext(rel))
+	return filepath.Join(baseAssetsDir, stem)
 }
 
 // printTreeSummary 在导出结束后打印总结，便于用户一眼看清结果。
@@ -387,10 +416,11 @@ func truncate(s string, n int) string {
 func init() {
 	wikiCmd.AddCommand(exportWikiTreeCmd)
 	exportWikiTreeCmd.Flags().StringP("output-dir", "o", "./", "输出根目录")
-	exportWikiTreeCmd.Flags().Int("max-depth", 10, "最大递归深度（0 表示无限）")
+	exportWikiTreeCmd.Flags().Int("max-depth", 0, "最大递归深度（0 表示无限）")
 	exportWikiTreeCmd.Flags().StringSlice("include-types", []string{"docx", "sheet"}, "要导出的 obj_type，逗号分隔（仅 docx/sheet 实际支持转 Markdown，其它类型即使列出也会被跳过）")
 	exportWikiTreeCmd.Flags().Bool("download-images", false, "下载图片到本地目录（透传给底层 export）")
 	exportWikiTreeCmd.Flags().String("assets-dir", "./assets", "图片下载目录（透传给底层 export）")
+	exportWikiTreeCmd.Flags().Bool("expand-sheets", true, "展开内嵌电子表格为 Markdown 表格（false 时保留 <sheet/> 引用）")
 	exportWikiTreeCmd.Flags().Bool("skip-existing", false, "已存在且非空的 md 跳过（适合增量同步）")
 	exportWikiTreeCmd.Flags().Bool("continue-on-error", true, "单个节点导出失败时是否继续后续节点")
 	exportWikiTreeCmd.Flags().String("user-access-token", "", "User Access Token（可选；默认优先使用 auth login 登录态，失败时回退 App Token）")

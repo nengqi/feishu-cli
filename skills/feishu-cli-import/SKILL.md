@@ -5,35 +5,38 @@ description: >-
   大表格智能处理（行 > 9 用 insert_table_row API 追加保持单 block，列 > 9 拆分保留首列）、公式、Callout 高亮块。当用户请求"导入 Markdown"、"从 md 创建文档"、
   "从 md 文件创建文档"、"把 Markdown 转换到飞书"、"上传 Markdown"、"Markdown 转飞书"、
   "md 导入"、"批量导入"时使用。
-  注意：仅支持 Markdown 源文件。DOCX/XLSX 导入为云文档请使用 feishu-cli-drive 的 drive import。
+  注意：仅支持 Markdown 源文件导入为飞书文档。Markdown 表格创建电子表格请用 feishu-cli-toolkit 的 `sheet import-md`；
+  DOCX/XLSX 导入为云文档请使用 feishu-cli-drive 的 drive import。
 argument-hint: <markdown_file> [--title "标题"] [--verbose]
 user-invocable: true
-allowed-tools: Bash, Read
+allowed-tools: Bash(feishu-cli doc:*), Bash(feishu-cli perm:*), Bash(feishu-cli sheet:*), Bash(python3:*), Read
 ---
 
 # Markdown 导入技能
 
-从本地 Markdown 文件创建或更新飞书云文档。**支持 Mermaid/PlantUML 图表转飞书画板、大表格智能处理（行 > 9 单 block API 追加；列 > 9 拆分保留首列）**。
+从本地 Markdown 文件创建飞书云文档，或把 Markdown 追加导入到已有文档。**支持 Mermaid/PlantUML 图表转飞书画板、大表格智能处理（行 > 9 单 block API 追加；列 > 9 拆分保留首列）**。
 
-> **CRITICAL：** 每次创建新文档后，**必须立即**执行以下两步：
-> 1. 授予 `full_access` 权限：`feishu-cli perm add <document_id> --doc-type docx --member-type email --member-id user@example.com --perm full_access --notification`
-> 2. 转移文档所有权：`feishu-cli perm transfer-owner <document_id> --doc-type docx --member-type email --member-id user@example.com --notification`
->
-> 详见下方"执行流程 → 创建新文档"。
+> **Owner 规则**：创建新文档后如需交付给用户，先解析 `FEISHU_OWNER_EMAIL` 或配置文件 `owner_email`。只在解析到 owner 时授予 `full_access`；只在 `transfer_ownership=true` 时转移所有权。不要把示例邮箱当成真实接收人。
 
 ## 核心特性
 
 1. **三阶段并发管道**：顺序创建块 → 并发处理图表/表格 → 失败回退
 2. **Mermaid/PlantUML → 飞书画板**：`mermaid`/`plantuml`/`puml` 代码块自动转换为飞书画板
-3. **图表故障容错**：语法错误自动降级为代码块展示，服务端错误自动重试（最多 20 次）
+3. **图表故障容错**：语法错误自动降级为代码块展示，服务端错误自动重试（默认最多 10 次，可用 `--diagram-retries` 调整）
 4. **大表格智能处理**：行 > 9 时创建 9 行初始表 + `insert_table_row` API 追加到同一 block（视觉连贯，每行约 1 次 API 往返；verbose 模式 ≥ 5 行打印进度）；列 > 9 按列组拆分保留首列作为标识
 5. **表格列宽自动计算**：根据内容智能计算列宽（中英文区分，最小 80px，最大 400px）
-6. **API 限流自动重试**：画板创建和图表导入遇到 HTTP 429 时自动重试，读取服务端 `x-ogw-ratelimit-reset` 响应头精确计算退避时间，采用指数退避策略，默认最多重试 20 次
+6. **API 限流自动重试**：画板创建和图表导入遇到 HTTP 429 时自动重试，读取服务端 `x-ogw-ratelimit-reset` 响应头精确计算退避时间，采用指数退避策略，默认最多重试 10 次
 7. **并发控制**：图表和表格分别使用独立的 worker 池（默认图表 5、表格 3 并发）
 
 ## 核心概念
 
 **Markdown 作为中间态**：本地文档与飞书云文档之间通过 Markdown 格式进行转换。
+
+如果用户目标是“把 Markdown 里的表格变成飞书电子表格”，不要走 `doc import`，改用：
+
+```bash
+feishu-cli sheet import-md report.md --title "报表"
+```
 
 ## 前置条件
 
@@ -47,7 +50,7 @@ allowed-tools: Bash, Read
 # 创建新文档
 /feishu-import ./document.md --title "文档标题"
 
-# 更新已有文档
+# 追加导入到已有文档（不会原地替换）
 /feishu-import ./document.md --document-id <existing_doc_id>
 
 # 上传本地图片
@@ -68,22 +71,24 @@ allowed-tools: Bash, Read
    feishu-cli doc import <file.md> --title "<title>" [--upload-images]
    ```
 
-3. **添加权限**
+3. **添加权限**（仅 owner 已配置时）
    ```bash
-   feishu-cli perm add <document_id> --doc-type docx --member-type email --member-id user@example.com --perm full_access --notification
+   feishu-cli perm add <document_id> --doc-type docx --member-type email --member-id <owner_email> --perm full_access --notification
    ```
 
-4. **转移文档所有权**
+4. **转移文档所有权**（仅 `transfer_ownership=true` 时）
    ```bash
-   feishu-cli perm transfer-owner <document_id> --doc-type docx --member-type email --member-id user@example.com --notification
+   feishu-cli perm transfer-owner <document_id> --doc-type docx --member-type email --member-id <owner_email> --notification
    ```
 
 5. **发送通知**
    发送飞书消息通知用户文档已创建
 
-### 更新已有文档
+### 追加导入到已有文档
 
-1. **执行更新**
+`--document-id` 不会替换已有内容，只会把 Markdown 转换后的块追加到文档末尾。修改/覆盖已有内容请用 `feishu-cli doc content-update`。
+
+1. **执行追加导入**
    ```bash
    feishu-cli doc import <file.md> --document-id <doc_id> [--upload-images]
    ```
@@ -96,7 +101,7 @@ allowed-tools: Bash, Read
 |------|------|--------|
 | markdown_file | Markdown 文件路径 | 必需 |
 | --title | 新文档标题 | 文件名 |
-| --document-id | 更新已有文档 | 创建新文档 |
+| --document-id | 追加导入到已有文档 | 创建新文档 |
 | --upload-images | 上传本地和网络图片到飞书 | 是（默认开启） |
 | --image-workers | 图片并发上传数 | 2（API 限制 5 QPS） |
 | --folder, -f | 新文档的目标文件夹 Token | 根目录 |
@@ -222,7 +227,7 @@ $\int_{0}^{\infty} e^{-x^2} dx = \frac{\sqrt{\pi}}{2}$
 # 创建新文档
 /feishu-import ./meeting-notes.md --title "会议纪要"
 
-# 更新现有文档
+# 追加导入到现有文档
 /feishu-import ./updated-spec.md --document-id <document_id>
 
 # 带图片导入（自动上传本地和网络图片）
@@ -259,7 +264,7 @@ $\int_{0}^{\infty} e^{-x^2} dx = \frac{\sqrt{\pi}}{2}$
 | `{}` 花括号 | Mermaid 解析器将 `{text}` 识别为菱形节点 | 自动降级为代码块 |
 | `par...and...end` | 飞书解析器完全不支持 par 并行语法 | 用 `Note over X: 并行执行` 替代 |
 | 渲染复杂度组合超限 | 单一因素不会触发，但 10+ participant + 2+ alt 块 + 30+ 长消息标签组合时服务端返回 500 | 重试后降级为代码块 |
-| 服务端瞬时错误 | 偶发 HTTP 500（并发压力导致） | 自动重试（最多 20 次，指数退避） |
+| 服务端瞬时错误 | 偶发 HTTP 500（并发压力导致） | 自动重试（默认最多 10 次，指数退避） |
 | Parse error 不重试 | 语法错误直接降级 | 自动降级为代码块 |
 
 **渲染复杂度安全阈值**（二分法实测）：
@@ -273,7 +278,7 @@ $\int_{0}^{\infty} e^{-x^2} dx = \frac{\sqrt{\pi}}{2}$
 - API 端点：`/open-apis/board/v1/whiteboards/{id}/nodes/plantuml`
 - `syntax_type=1` 表示 PlantUML 语法，`syntax_type=2` 表示 Mermaid 语法
 - `diagram_type` 使用整数（0=auto, 6=flowchart 等）
-- 重试策略：指数退避 + 读取 `x-ogw-ratelimit-reset` 响应头精确退避，最多 20 次；Parse error 和 Invalid request parameter 不重试
+- 重试策略：指数退避 + 读取 `x-ogw-ratelimit-reset` 响应头精确退避，默认最多 10 次；Parse error 和 Invalid request parameter 不重试
 - 失败回退：删除空画板块，在原位置插入代码块
 - 支持的代码块标识：` ```mermaid `、` ```plantuml `、` ```puml `
 
@@ -307,4 +312,4 @@ $\int_{0}^{\infty} e^{-x^2} dx = \frac{\sqrt{\pi}}{2}$
 | 超长表格导入耗时显著 | 行 > 9 时 CLI 通过 `insert_table_row` API **逐行串行追加**到同一 block（每行约 1 次 API 往返） | 属于正常行为；verbose 模式每 5 行打印进度。行数极多（200+）时建议改用电子表格（Sheet）承载 |
 | 表格被拆分为多个 block | 列 > 9 时 CLI 按列组拆分（每组 ≤ 9 列），首列作为标识在所有组中保留 | 属于正常行为，避免拆分后行无法识别 |
 | 图片上传失败 | 网络不通或图片 URL 不可访问 | 检查网络连通性；失败的图片会自动创建占位块，不影响整体导入 |
-| 文档创建成功但无法编辑 | 未执行权限添加和所有权转移步骤 | 执行 `perm add` + `perm transfer-owner`，详见"执行流程 → 创建新文档" |
+| 文档创建成功但无法编辑 | 未按 owner 配置添加权限 | 设置 `FEISHU_OWNER_EMAIL` 后执行 `perm add`；仅当 `transfer_ownership=true` 时再执行 `perm transfer-owner` |

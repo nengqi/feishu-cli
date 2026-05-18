@@ -1,8 +1,11 @@
 package converter
 
 import (
+	"context"
 	"fmt"
 	"strings"
+
+	"github.com/riba2534/feishu-cli/internal/client"
 )
 
 // SheetData 单个工作表的数据
@@ -10,6 +13,11 @@ type SheetData struct {
 	Title  string  // 工作表标题
 	Values [][]any // 二维数组，V2 API 返回
 }
+
+const (
+	sheetMarkdownReadChunkCells = 5000
+	sheetMarkdownMaxReadCells   = 100000
+)
 
 // SheetToMarkdown 将电子表格数据转换为 Markdown
 func SheetToMarkdown(sheets []*SheetData) string {
@@ -65,6 +73,149 @@ func SheetToMarkdown(sheets []*SheetData) string {
 	}
 
 	return strings.TrimRight(sb.String(), "\n") + "\n"
+}
+
+// FetchSheetDataForMarkdown 读取电子表格数据，供 docx 内嵌 Sheet 自动展开使用。
+// sheetID 为空时导出所有可见工作表；非空时只导出对应工作表。
+func FetchSheetDataForMarkdown(spreadsheetToken, sheetID, userAccessToken string) ([]*SheetData, error) {
+	ctx := client.Context()
+	sheets, err := client.QuerySheets(ctx, spreadsheetToken, userAccessToken)
+	if err != nil {
+		return nil, fmt.Errorf("获取工作表列表失败: %w", err)
+	}
+	if len(sheets) == 0 {
+		return nil, fmt.Errorf("电子表格中没有工作表")
+	}
+
+	var targets []*client.SheetInfo
+	for _, sheet := range sheets {
+		if sheetID != "" && sheet.SheetID != sheetID {
+			continue
+		}
+		if sheetID == "" && sheet.Hidden {
+			continue
+		}
+		targets = append(targets, sheet)
+	}
+	if sheetID != "" && len(targets) == 0 {
+		return nil, fmt.Errorf("未找到工作表: %s", sheetID)
+	}
+
+	result := make([]*SheetData, 0, len(targets))
+	for _, sheet := range targets {
+		values, err := readSheetValuesForMarkdown(ctx, spreadsheetToken, sheet, userAccessToken)
+		if err != nil {
+			return nil, fmt.Errorf("读取工作表 %q 失败: %w", sheet.Title, err)
+		}
+		result = append(result, &SheetData{
+			Title:  sheet.Title,
+			Values: values,
+		})
+	}
+	if len(result) == 0 {
+		return nil, fmt.Errorf("没有可导出的工作表数据")
+	}
+
+	return result, nil
+}
+
+func readSheetValuesForMarkdown(ctx context.Context, spreadsheetToken string, sheet *client.SheetInfo, userAccessToken string) ([][]any, error) {
+	if sheet.RowCount <= 0 || sheet.ColCount <= 0 {
+		return nil, nil
+	}
+
+	chunks, err := buildSheetReadChunks(sheet.SheetID, sheet.RowCount, sheet.ColCount)
+	if err != nil {
+		return nil, err
+	}
+
+	values := make([][]any, sheet.RowCount)
+	for _, chunk := range chunks {
+		cellRange, err := client.ReadCells(ctx, spreadsheetToken, chunk.Range, "", "", userAccessToken)
+		if err != nil {
+			return nil, err
+		}
+		if cellRange == nil {
+			continue
+		}
+		mergeSheetChunkValues(values, chunk.StartRow, chunk.StartCol, cellRange.Values)
+	}
+	return values, nil
+}
+
+type sheetReadChunk struct {
+	Range    string
+	StartRow int
+	StartCol int
+}
+
+func buildSheetReadChunks(sheetID string, rowCount, colCount int) ([]sheetReadChunk, error) {
+	if rowCount <= 0 || colCount <= 0 {
+		return nil, nil
+	}
+	if rowCount*colCount > sheetMarkdownMaxReadCells {
+		return nil, fmt.Errorf("网格大小 %d 行 × %d 列超过 Markdown 导出上限 %d 个单元格，请缩小工作表或按范围读取", rowCount, colCount, sheetMarkdownMaxReadCells)
+	}
+
+	var chunks []sheetReadChunk
+	firstColSpan := minInt(colCount, sheetMarkdownReadChunkCells)
+	rowSpan := maxInt(1, sheetMarkdownReadChunkCells/firstColSpan)
+	for rowStart := 1; rowStart <= rowCount; {
+		rowEnd := minInt(rowCount, rowStart+rowSpan-1)
+		for colStart := 1; colStart <= colCount; {
+			colSpan := minInt(colCount-colStart+1, sheetMarkdownReadChunkCells)
+			colEnd := colStart + colSpan - 1
+			chunks = append(chunks, sheetReadChunk{
+				Range:    fmt.Sprintf("%s!%s%d:%s%d", sheetID, sheetColIndexToLetter(colStart), rowStart, sheetColIndexToLetter(colEnd), rowEnd),
+				StartRow: rowStart,
+				StartCol: colStart,
+			})
+			colStart = colEnd + 1
+		}
+
+		rowStart = rowEnd + 1
+	}
+	return chunks, nil
+}
+
+func mergeSheetChunkValues(dest [][]any, startRow, startCol int, values [][]any) {
+	for r, row := range values {
+		rowIdx := startRow - 1 + r
+		if rowIdx < 0 || rowIdx >= len(dest) {
+			break
+		}
+		needLen := startCol - 1 + len(row)
+		if len(dest[rowIdx]) < needLen {
+			next := make([]any, needLen)
+			copy(next, dest[rowIdx])
+			dest[rowIdx] = next
+		}
+		copy(dest[rowIdx][startCol-1:], row)
+	}
+}
+
+func sheetColIndexToLetter(col int) string {
+	var result string
+	for col > 0 {
+		col--
+		result = string(rune('A'+col%26)) + result
+		col /= 26
+	}
+	return result
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // writeRow 写入一行 Markdown 表格

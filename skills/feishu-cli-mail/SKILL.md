@@ -5,16 +5,16 @@ description: >-
   当用户请求"发邮件"、"看邮件"、"查邮件"、"回复邮件"、"转发邮件"、"邮件草稿"、"收件箱"、
   "feishu mail"、"lark mail"、"未读邮件"时使用。
   所有命令需要 User Access Token（先 feishu-cli auth login）。
-  首期限制：发送/回复/转发仅支持纯文本或 HTML body，暂不支持附件和 CID 内联图片。
+  首期限制：发送/草稿/回复支持纯文本或 HTML body；forward 当前仅支持纯文本 body。暂不支持附件和 CID 内联图片。
 user-invocable: true
-allowed-tools: Bash, Read
+allowed-tools: Bash(feishu-cli mail:*), Bash(feishu-cli auth:*), Read
 ---
 
 # 飞书邮箱（Mail）
 
 查看、发送、回复、转发邮件，管理草稿，过滤收件箱。
 
-> **首期限制**：`send / draft-create / draft-edit / reply / reply-all / forward` 仅支持纯文本/HTML body，暂不支持附件和 CID 内联图片。
+> **首期限制**：`send / draft-create / draft-edit / reply / reply-all` 支持纯文本/HTML body；`forward` 当前仅支持纯文本 body。暂不支持附件和 CID 内联图片。
 
 ## 前置条件
 
@@ -63,7 +63,7 @@ feishu-cli mail thread --thread-id thread_xxx
 | `mail draft-edit` | 编辑已有草稿（全量覆盖） |
 | `mail reply` | 回复邮件（自动 Re: 前缀 + 引用块 + In-Reply-To） |
 | `mail reply-all` | 全部回复（包含原邮件 To 和 CC 的所有人，**自动排除自己**） |
-| `mail forward` | 转发邮件（自动 Fwd: 前缀 + 原文） |
+| `mail forward` | 转发邮件（自动 Fwd: 前缀 + 原文；正文 text-only） |
 
 ```bash
 # 发邮件（默认保存为草稿，安全兜底）
@@ -140,7 +140,7 @@ feishu-cli mail draft-edit --draft-id $DRAFT_ID --to user@example.com --subject 
 ## 注意事项
 
 - **默认草稿**：`mail send` 默认只保存草稿（安全兜底）。必须显式加 `--confirm-send` 才会真正发送邮件。
-- **HTML 自动检测**：如果 `--body` 含以下任一标签自动按 HTML 发送：`<html>` / `<body>` / `<div>` / `<p>` / `<br>` / `<b>` / `<i>` / `<a ` / `<table>` / `<h1>` / `<h2>` / `<h3>`。可用 `--plain-text` 或 `--html` 强制指定。
+- **HTML 自动检测**：`send / draft-create / draft-edit / reply / reply-all` 如果 `--body` 含以下任一标签会自动按 HTML 发送：`<html>` / `<body>` / `<div>` / `<p>` / `<br>` / `<b>` / `<i>` / `<a ` / `<table>` / `<h1>` / `<h2>` / `<h3>`。可用 `--plain-text` 或 `--html` 强制指定。`forward` 当前没有 `--html`/`--plain-text` 参数。
 - **引用块**：`reply/reply-all` 会自动把原邮件 body 作为 `> ` 引用块附加到回复正文后。
 - **发件人识别**：不传 `--from` 时，从 mailbox profile（`GET /profile`）自动读取 `primary_email_address` 和 `name`。
 - **EML 格式**：所有发送命令底层都构造 RFC 5322 格式 EML，经过 base64 URL-safe 编码后提交给 `/drafts` API。

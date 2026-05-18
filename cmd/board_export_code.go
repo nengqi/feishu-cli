@@ -23,8 +23,8 @@ var boardExportCodeCmd = &cobra.Command{
 
 示例:
   feishu-cli board export-code <id>                # stdout
-  feishu-cli board export-code <id> --output design.svg
-  feishu-cli board export-code <id> --output design.svg --merge`,
+  feishu-cli board export-code <id> --output-path design.svg
+  feishu-cli board export-code <id> --output-path design.svg --merge`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := config.Validate(); err != nil {
@@ -32,6 +32,10 @@ var boardExportCodeCmd = &cobra.Command{
 		}
 		whiteboardID := args[0]
 		outputPath, _ := cmd.Flags().GetString("output-path")
+		legacyOutputPath, _ := cmd.Flags().GetString("output")
+		if outputPath == "" {
+			outputPath = legacyOutputPath
+		}
 		merge, _ := cmd.Flags().GetBool("merge")
 		userAccessToken := resolveOptionalUserToken(cmd)
 
@@ -42,10 +46,14 @@ var boardExportCodeCmd = &cobra.Command{
 		var apiResp struct {
 			Code int `json:"code"`
 			Data struct {
-				Nodes []map[string]any `json:"nodes"`
+				Nodes json.RawMessage `json:"nodes"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(raw, &apiResp); err != nil {
+			return err
+		}
+		nodes, err := parseBoardExportNodes(apiResp.Data.Nodes)
+		if err != nil {
 			return err
 		}
 
@@ -56,7 +64,7 @@ var boardExportCodeCmd = &cobra.Command{
 			code    string
 		}
 		var items []svgItem
-		for _, node := range apiResp.Data.Nodes {
+		for _, node := range nodes {
 			if t, _ := node["type"].(string); t != "svg" {
 				continue
 			}
@@ -137,6 +145,34 @@ var boardExportCodeCmd = &cobra.Command{
 	},
 }
 
+func parseBoardExportNodes(raw json.RawMessage) ([]map[string]any, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+
+	var nodeArray []map[string]any
+	if err := json.Unmarshal(raw, &nodeArray); err == nil {
+		return nodeArray, nil
+	}
+
+	var nodeMap map[string]map[string]any
+	if err := json.Unmarshal(raw, &nodeMap); err == nil {
+		nodes := make([]map[string]any, 0, len(nodeMap))
+		for id, node := range nodeMap {
+			if node == nil {
+				continue
+			}
+			if _, ok := node["id"]; !ok && id != "" {
+				node["id"] = id
+			}
+			nodes = append(nodes, node)
+		}
+		return nodes, nil
+	}
+
+	return nil, fmt.Errorf("解析画板节点失败：nodes 既不是数组也不是对象")
+}
+
 // stripSVGWrapper 去除最外层 <svg ...> 和 </svg>，只留内部内容（用于 merge）
 func stripSVGWrapper(svgCode string) string {
 	s := strings.TrimSpace(svgCode)
@@ -154,6 +190,8 @@ func stripSVGWrapper(svgCode string) string {
 func init() {
 	boardCmd.AddCommand(boardExportCodeCmd)
 	boardExportCodeCmd.Flags().String("output-path", "", "输出文件路径（不指定则打印到 stdout）")
+	boardExportCodeCmd.Flags().String("output", "", "输出文件路径（兼容旧参数，请改用 --output-path）")
+	_ = boardExportCodeCmd.Flags().MarkDeprecated("output", "请改用 --output-path")
 	boardExportCodeCmd.Flags().Bool("merge", false, "合并所有 svg 为单一 SVG（带 viewBox 自动包围）")
 	boardExportCodeCmd.Flags().String("user-access-token", "", "User Access Token")
 }

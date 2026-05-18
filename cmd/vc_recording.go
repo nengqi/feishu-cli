@@ -21,7 +21,7 @@ var vcRecordingCmd = &cobra.Command{
   --calendar-event-ids  通过日历事件实例 ID 反查会议 ID（逗号分隔，最多 50 条）
 
 输出字段：
-  meeting_id / minute_token / recording_url / duration / status
+  meeting_id / minute_token / recording_url / duration
 
 权限:
   - User Access Token

@@ -2,7 +2,7 @@
 
 这是 2026-05 实战的 14 张画板档案，覆盖图表 / 跨领域设计 / 极限挑战三类场景。原始作品由 Claude Opus 4.7 自由 SVG 设计后，通过本 skill 的 5 步管道翻译为飞书原生节点。
 
-每个条目记录：原文档画板 token / 节点数 / 视觉设计模式 / SVG 元素组合 / 推荐工作路径。**Claude 用这份档案做设计参考**——拿到"画个增长飞轮"的需求，能直接看到对应模式应用哪些 SVG 元素、节点规模大概多少。
+每个条目记录：示例画板 token / 节点数 / 视觉设计模式 / SVG 元素组合 / 推荐工作路径。**Claude 用这份档案做设计参考**——拿到"画个增长飞轮"的需求，能直接看到对应模式应用哪些 SVG 元素、节点规模大概多少。
 
 ---
 
@@ -10,7 +10,7 @@
 
 ### 1. 增长飞轮 · Growth Flywheel
 
-- **原文档 token**: `MTlaw76kYhW5AfbaKJ4cCgcpnrh`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 48（原文档）/ 30（复刻）
 - **类型分布**: text_shape:24 / svg:4（扇形）/ composite_shape:2 / connector:0
 - **设计模式**: 圆环切割 + 极坐标外围标签
@@ -24,7 +24,7 @@
 
 ### 2. 鱼骨分析 · Fishbone Diagram
 
-- **原文档 token**: `GM53wTyPNhREO3b4qjwcEmtqnxh`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 71（原文档）/ 67（复刻）
 - **类型分布**: text_shape:30 / connector:28 / composite_shape:8 / svg:1
 - **设计模式**: 对称斜骨 + 同色系分组
@@ -38,7 +38,7 @@
 
 ### 3. 价值金字塔 · Value Pyramid
 
-- **原文档 token**: `Kl6twVa4Bhx4atbfG5DcjkngnYc`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 56（原文档）/ 28（复刻）
 - **类型分布**: text_shape:21 / svg:5 / composite_shape:1 / connector:1
 - **设计模式**: 层级递减 + 描述外置
@@ -52,7 +52,7 @@
 
 ### 4. 流量归因桑基图 · Traffic Attribution Sankey
 
-- **原文档 token**: `TNNcwKjjphgEVabWHhZcIwLonU9`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 97（原文档）/ 85（复刻）
 - **类型分布**: svg:35（流条）/ text_shape:33 / composite_shape:17
 - **设计模式**: 三层流动 + cubic-bezier 流条
@@ -66,7 +66,7 @@
 
 ### 5. 产品路线图 · Product Roadmap
 
-- **原文档 token**: `UeQUwBRMNhrZZ6bpi9qcgSrmnvd`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 96（原文档）/ 93（复刻）
 - **类型分布**: text_shape:54 / composite_shape:28 / connector:14 / svg:1
 - **设计模式**: 横向时间轴 + 上下交替里程碑卡
@@ -80,7 +80,7 @@
 
 ### 6. SaaS 仪表盘 UI · Analytics Dashboard
 
-- **原文档 token**: `Pabawi0cnhCrOnbR8wAcaMJCnnh`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 187（原文档）/ 171（复刻）
 - **类型分布**: text_shape:104 / composite_shape:62 / connector:16 / svg:5
 - **设计模式**: UI Mockup 嵌套
@@ -100,7 +100,7 @@
 
 ### 7. 房屋平面图 · Floor Plan
 
-- **原文档 token**: `RiuVwAPafhjmYmbOdNJcpFlhnCj`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 288（原文档）/ 119（复刻）
 - **类型分布**: composite_shape:116 / text_shape:106 / connector:50 / svg:16
 - **设计模式**: 平面建筑布局 + 家具示意
@@ -117,7 +117,7 @@
 
 ### 8. 宣传海报 · AI Builder Summit 2026
 
-- **原文档 token**: `OVccwrTgkh09eObp90HcjloRneh`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 153（原文档）/ 124（复刻）
 - **类型分布**: composite_shape:86 / text_shape:56 / svg:4 / group:3 / connector:4
 - **设计模式**: 斜切几何 + 大字标题 + QR 区域
@@ -134,7 +134,7 @@
 
 ### 9. Mobile App UI · 健康追踪
 
-- **原文档 token**: `HbDqwVL2XhEXm6bXZGCcIYnNn53`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 157（原文档）/ 67（复刻）
 - **类型分布**: text_shape:41 / composite_shape:24 / connector:2
 - **设计模式**: iOS 风格 UI Mockup
@@ -151,7 +151,7 @@
 
 ### 10. 地铁线路图 · 云栖城
 
-- **原文档 token**: `ZW0fw33vYhMcGZbjQINc576anPg`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 137（原文档）/ 117（复刻）
 - **类型分布**: composite_shape:66 / text_shape:46 / connector:18 / group:5 / svg:2
 - **设计模式**: 多色线路网 + 站点标注
@@ -168,7 +168,7 @@
 
 ### 11. 插画 · 雨后山林清晨
 
-- **原文档 token**: `AlWEwFMzzhcScEbWWrFcLCOGnvb`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 107（原文档）/ 101（复刻）
 - **类型分布**: composite_shape:45 / connector:26 / svg:25（山脉 / 太阳光晕）/ group:5 / text_shape:1
 - **设计模式**: 多层视差 + 暖色调
@@ -190,7 +190,7 @@
 
 ### 12. 化学元素周期表 · Periodic Table
 
-- **原文档 token**: `KqLBwFrCShis15bneh7ckOUVn0H`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 659（原文档）/ 647（复刻）
 - **类型分布**: text_shape:525 / composite_shape:133 / connector:1
 - **设计模式**: 密集网格 + 类别分色
@@ -207,7 +207,7 @@
 
 ### 13. 机械时钟内部 · Movement Anatomy
 
-- **原文档 token**: `Wj9ewldh8hcsQCbrdascTlETnde`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 168（原文档）/ 316（复刻）
 - **类型分布**: composite_shape:259 / connector:43 / text_shape:13 / svg:1
 - **设计模式**: 机械结构解剖图
@@ -226,7 +226,7 @@
 
 ### 14. 赛博朋克城市夜景 · Cyberpunk Cityscape
 
-- **原文档 token**: `LkFkw0diqhDZKJbUqvJc8GJ2nah`
+- **示例 token**: `board_token_xxx`
 - **节点数**: 1503（原文档）/ 1984（复刻）
 - **类型分布**: composite_shape:1919（窗户密集）/ connector:48 / svg:9 / text_shape:16
 - **设计模式**: 多层视差建筑剪影 + 高密度霓虹

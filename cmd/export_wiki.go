@@ -24,6 +24,7 @@ var exportWikiCmd = &cobra.Command{
 工作流程:
   docx: 获取文档块 → 转换为 Markdown → 保存
   sheet: 获取工作表列表 → 读取单元格数据 → 转为 Markdown 表格 → 保存
+  内嵌 sheet: 默认展开为 Markdown 表格；失败时可用 --expand-sheets=false 保留 <sheet/> 引用
 
 参数:
   node_token        节点 Token
@@ -124,6 +125,10 @@ var exportWikiCmd = &cobra.Command{
 
 // exportDocxToMarkdown 导出 docx 类型文档为 Markdown
 func exportDocxToMarkdown(docToken, userAccessToken string, cmd *cobra.Command) (string, error) {
+	return exportDocxToMarkdownWithAssets(docToken, userAccessToken, cmd, "")
+}
+
+func exportDocxToMarkdownWithAssets(docToken, userAccessToken string, cmd *cobra.Command, assetsDirOverride string) (string, error) {
 	fmt.Println("正在获取文档内容...")
 	blocks, err := client.GetAllBlocksWithToken(docToken, userAccessToken)
 	if err != nil {
@@ -132,6 +137,13 @@ func exportDocxToMarkdown(docToken, userAccessToken string, cmd *cobra.Command) 
 
 	downloadImages, _ := cmd.Flags().GetBool("download-images")
 	assetsDir, _ := cmd.Flags().GetString("assets-dir")
+	expandSheets := true
+	if cmd.Flags().Lookup("expand-sheets") != nil {
+		expandSheets, _ = cmd.Flags().GetBool("expand-sheets")
+	}
+	if assetsDirOverride != "" {
+		assetsDir = assetsDirOverride
+	}
 	cfg := config.Get()
 
 	conv := converter.NewBlockToMarkdown(blocks, converter.ConvertOptions{
@@ -140,6 +152,7 @@ func exportDocxToMarkdown(docToken, userAccessToken string, cmd *cobra.Command) 
 		AssetsDir:       assetsDir,
 		UserAccessToken: userAccessToken,
 		Debug:           cfg.Debug,
+		ExpandSheets:    expandSheets,
 	})
 	md, err := conv.Convert()
 	if err != nil {
@@ -150,48 +163,13 @@ func exportDocxToMarkdown(docToken, userAccessToken string, cmd *cobra.Command) 
 
 // exportSheetToMarkdown 导出 sheet 类型文档为 Markdown
 func exportSheetToMarkdown(spreadsheetToken, title, userAccessToken string) (string, error) {
-	ctx := client.Context()
-
-	// 1. 查询所有工作表
 	fmt.Println("正在获取工作表列表...")
-	sheets, err := client.QuerySheets(ctx, spreadsheetToken, userAccessToken)
+	sheetDataList, err := converter.FetchSheetDataForMarkdown(spreadsheetToken, "", userAccessToken)
 	if err != nil {
-		return "", fmt.Errorf("获取工作表列表失败: %w", err)
+		return "", err
 	}
+	fmt.Printf("共 %d 个工作表，已读取数据\n", len(sheetDataList))
 
-	if len(sheets) == 0 {
-		return "", fmt.Errorf("电子表格中没有工作表")
-	}
-
-	fmt.Printf("共 %d 个工作表，正在读取数据...\n", len(sheets))
-
-	// 2. 逐个读取工作表数据
-	var sheetDataList []*converter.SheetData
-	for _, s := range sheets {
-		if s.Hidden {
-			continue
-		}
-		colLetter := colIndexToLetter(s.ColCount)
-		rangeStr := fmt.Sprintf("%s!A1:%s%d", s.SheetID, colLetter, s.RowCount)
-
-		cellRange, err := client.ReadCells(ctx, spreadsheetToken, rangeStr, "", "", userAccessToken)
-		if err != nil {
-			fmt.Printf("  ⚠ 读取工作表 %q 失败: %v，跳过\n", s.Title, err)
-			continue
-		}
-
-		fmt.Printf("  ✓ %s（%d 行）\n", s.Title, len(cellRange.Values))
-		sheetDataList = append(sheetDataList, &converter.SheetData{
-			Title:  s.Title,
-			Values: cellRange.Values,
-		})
-	}
-
-	if len(sheetDataList) == 0 {
-		return "", fmt.Errorf("没有可导出的工作表数据")
-	}
-
-	// 3. 转换为 Markdown
 	var sb strings.Builder
 	if title != "" {
 		sb.WriteString("# ")
@@ -219,5 +197,6 @@ func init() {
 	exportWikiCmd.Flags().StringP("output", "o", "", "输出文件路径")
 	exportWikiCmd.Flags().Bool("download-images", false, "下载图片到本地目录")
 	exportWikiCmd.Flags().String("assets-dir", "./assets", "下载资源的保存目录")
+	exportWikiCmd.Flags().Bool("expand-sheets", true, "展开内嵌电子表格为 Markdown 表格（false 时保留 <sheet/> 引用）")
 	exportWikiCmd.Flags().String("user-access-token", "", "User Access Token（可选，用于访问个人知识库）")
 }
