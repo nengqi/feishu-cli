@@ -36,7 +36,7 @@ var approvalTaskApproveCmd = &cobra.Command{
 			return err
 		}
 
-		token := resolveFlagUserToken(cmd)
+		token := resolveOptionalUserTokenWithFallback(cmd)
 		if err := client.ApproveApprovalTask(opts, token); err != nil {
 			return err
 		}

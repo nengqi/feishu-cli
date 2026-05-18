@@ -54,7 +54,7 @@ var approvalInstanceCcCmd = &cobra.Command{
 
 		comment, _ := cmd.Flags().GetString("comment")
 		userIDType, _ := cmd.Flags().GetString("user-id-type")
-		token := resolveFlagUserToken(cmd)
+		token := resolveOptionalUserTokenWithFallback(cmd)
 
 		err := client.CCApprovalInstance(client.CCApprovalInstanceOptions{
 			ApprovalCode: approvalCode,
@@ -73,18 +73,22 @@ var approvalInstanceCcCmd = &cobra.Command{
 	},
 }
 
-// parseCommaSeparatedIDs 把逗号分隔的字符串切成去空格、去空值的切片。
+// parseCommaSeparatedIDs 把逗号分隔的字符串切成去空格、去空值、去重的切片。
+// 保留首次出现顺序，便于用户传入 ou_a,ou_b,ou_a 时只抄送一次。
 func parseCommaSeparatedIDs(raw string) []string {
 	if strings.TrimSpace(raw) == "" {
 		return nil
 	}
 	parts := strings.Split(raw, ",")
 	out := make([]string, 0, len(parts))
+	seen := make(map[string]bool, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
+		if p == "" || seen[p] {
+			continue
 		}
+		seen[p] = true
+		out = append(out, p)
 	}
 	return out
 }

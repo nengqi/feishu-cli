@@ -53,10 +53,11 @@ var approvalInstanceCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		// 校验是合法 JSON，避免无效字符串透传后服务端报错
-		var dummy any
-		if err := json.Unmarshal([]byte(formData), &dummy); err != nil {
-			return fmt.Errorf("表单数据不是合法 JSON: %w", err)
+		// 校验为合法 JSON 数组，飞书 form 必须是数组（[{"id":...}]），
+		// 否则服务端会返回不友好的参数错误。
+		var arr []any
+		if err := json.Unmarshal([]byte(formData), &arr); err != nil {
+			return fmt.Errorf("表单数据必须是 JSON 数组，解析失败: %w", err)
 		}
 
 		userIDType, _ := cmd.Flags().GetString("user-id-type")
@@ -73,7 +74,7 @@ var approvalInstanceCreateCmd = &cobra.Command{
 			OpenChatID:   openChatID,
 		}
 
-		token := resolveFlagUserToken(cmd)
+		token := resolveOptionalUserTokenWithFallback(cmd)
 		result, err := client.CreateApprovalInstance(opts, token)
 		if err != nil {
 			return err
