@@ -108,7 +108,10 @@ var okrProgressCreateCmd = &cobra.Command{
 			return fmt.Errorf("--progress-status 必须配合 --progress-percent 一起使用")
 		}
 
-		token := resolveOptionalUserTokenWithFallback(cmd)
+		token, errToken := requireUserToken(cmd, "okr progress create")
+		if errToken != nil {
+			return errToken
+		}
 		progress, err := client.CreateOKRProgress(opts, token)
 		if err != nil {
 			return err

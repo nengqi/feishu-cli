@@ -34,7 +34,10 @@ var okrCycleListCmd = &cobra.Command{
 
 		output, _ := cmd.Flags().GetString("output")
 
-		token := resolveOptionalUserTokenWithFallback(cmd)
+		token, errToken := requireUserToken(cmd, "okr cycle list")
+		if errToken != nil {
+			return errToken
+		}
 
 		cycles, err := client.ListOKRCycles(client.ListOKRCyclesOptions{}, token)
 		if err != nil {

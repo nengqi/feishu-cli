@@ -54,7 +54,10 @@ var approvalInstanceCcCmd = &cobra.Command{
 
 		comment, _ := cmd.Flags().GetString("comment")
 		userIDType, _ := cmd.Flags().GetString("user-id-type")
-		token := resolveOptionalUserTokenWithFallback(cmd)
+		token, errToken := requireUserToken(cmd, "approval instance cc")
+		if errToken != nil {
+			return errToken
+		}
 
 		err := client.CCApprovalInstance(client.CCApprovalInstanceOptions{
 			ApprovalCode: approvalCode,

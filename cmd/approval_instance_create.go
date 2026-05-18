@@ -74,7 +74,10 @@ var approvalInstanceCreateCmd = &cobra.Command{
 			OpenChatID:   openChatID,
 		}
 
-		token := resolveOptionalUserTokenWithFallback(cmd)
+		token, errToken := requireUserToken(cmd, "approval instance create")
+		if errToken != nil {
+			return errToken
+		}
 		result, err := client.CreateApprovalInstance(opts, token)
 		if err != nil {
 			return err

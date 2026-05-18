@@ -52,6 +52,11 @@ var rootCmd = &cobra.Command{
   event     实时事件订阅（WebSocket 长连接 + daemon 进程模型；list/consume/schema/status/stop）
   slides    Slides 演示文稿（创建 + 媒体上传）
   okr       OKR 操作（周期列表、进展记录列表与创建）
+  schema    本地浏览飞书 OpenAPI 方法（纯本地查询，不需 token；service.resource.method 路径）
+  sheet     电子表格（基础读写 + filter-view CRUD + dropdown 数据验证）
+  chat      群聊管理（拉人/踢人/改名/成员列表；reaction/pin 等互动）
+  profile   多 App 配置切换（add/list/use/current/rename/remove/migrate）
+  doctor    环境健康检查（6 项：config / user_token / endpoints / proxy / deps）
   config    配置管理（初始化配置）
 
 注意：bitable 命令已切换到 base/v3 API，flag 使用 --base-token。
@@ -90,14 +95,18 @@ var rootCmd = &cobra.Command{
 			return nil
 		}
 		switch cmd.Name() {
-		case "init", "help", "completion", "version":
+		case "init", "help", "completion", "version", "doctor", "schema":
 			return nil
 		}
-		// auth status/logout 不需要配置（只操作本地 token 文件）
-		if cmd.Parent() != nil && cmd.Parent().Name() == "auth" {
-			switch cmd.Name() {
-			case "status", "logout":
+		// auth status/logout / schema list / profile 全子命令 不需要配置（纯本地操作或配置自身）
+		if cmd.Parent() != nil {
+			switch cmd.Parent().Name() {
+			case "schema", "profile":
 				return nil
+			case "auth":
+				if cmd.Name() == "status" || cmd.Name() == "logout" {
+					return nil
+				}
 			}
 		}
 
@@ -128,4 +137,6 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "配置文件路径（默认: ~/.feishu-cli/config.yaml）")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "启用调试模式")
+	// R1 review fix: RunE 返回 error 时不再打印整页 usage 淹没真错误（11/13 PR 未单独设此 flag → root 统一处理）
+	rootCmd.SilenceUsage = true
 }

@@ -41,7 +41,10 @@ var calendarRsvpCmd = &cobra.Command{
 			return err
 		}
 
-		token := resolveOptionalUserToken(cmd)
+		token, errToken := requireUserToken(cmd, "calendar rsvp")
+		if errToken != nil {
+			return errToken
+		}
 
 		calendarID, _ := cmd.Flags().GetString("calendar-id")
 		eventID, _ := cmd.Flags().GetString("event-id")

@@ -44,7 +44,10 @@ var approvalInstanceCancelCmd = &cobra.Command{
 		}
 
 		userIDType, _ := cmd.Flags().GetString("user-id-type")
-		token := resolveOptionalUserTokenWithFallback(cmd)
+		token, errToken := requireUserToken(cmd, "approval instance cancel")
+		if errToken != nil {
+			return errToken
+		}
 
 		err := client.CancelApprovalInstance(client.CancelApprovalInstanceOptions{
 			ApprovalCode: approvalCode,

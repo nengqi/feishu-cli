@@ -49,7 +49,10 @@ var okrProgressListCmd = &cobra.Command{
 			return err
 		}
 
-		token := resolveOptionalUserTokenWithFallback(cmd)
+		token, errToken := requireUserToken(cmd, "okr progress list")
+		if errToken != nil {
+			return errToken
+		}
 		progresses, err := client.ListOKRProgresses(client.ListOKRProgressesOptions{
 			TargetID:   targetID,
 			TargetType: targetType,

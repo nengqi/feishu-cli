@@ -16,13 +16,13 @@ var markdownFetchCmd = &cobra.Command{
 	Long: `下载一个 Drive 上的 .md 文件，按需要直接打印到 stdout 或保存到本地。
 
 底层走 ` + "`/open-apis/drive/v1/files/{file_token}/download`" + `（client.DownloadFileWithToken），
-与 ` + "`drive download`" + ` 同一 endpoint，但默认面向 .md 文本场景：未指定 --output 时直接打印为 UTF-8。
+与 ` + "`drive download`" + ` 同一 endpoint，但默认面向 .md 文本场景：未指定 --output-path 时直接打印为 UTF-8。
 
 必填:
   --file-token   Markdown 文件 token
 
 可选:
-  --output       本地保存路径（缺省时打印到 stdout）
+  --output-path  本地保存路径（缺省时打印到 stdout）
   --overwrite    本地路径已存在时是否覆盖
   --user-access-token  覆盖登录态
 
@@ -32,8 +32,8 @@ var markdownFetchCmd = &cobra.Command{
 
 示例:
   feishu-cli markdown fetch --file-token boxcnxxx                 # 打印到 stdout
-  feishu-cli markdown fetch --file-token boxcnxxx --output ./local.md
-  feishu-cli markdown fetch --file-token boxcnxxx --output ./local.md --overwrite`,
+  feishu-cli markdown fetch --file-token boxcnxxx --output-path ./local.md
+  feishu-cli markdown fetch --file-token boxcnxxx --output-path ./local.md --overwrite`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := config.Validate(); err != nil {
 			return err
@@ -45,7 +45,7 @@ var markdownFetchCmd = &cobra.Command{
 		}
 
 		fileToken, _ := cmd.Flags().GetString("file-token")
-		outputPath, _ := cmd.Flags().GetString("output")
+		outputPath, _ := cmd.Flags().GetString("output-path")
 		overwrite, _ := cmd.Flags().GetBool("overwrite")
 		outputFormat, _ := cmd.Flags().GetString("output-format")
 
@@ -122,7 +122,7 @@ var markdownFetchCmd = &cobra.Command{
 func init() {
 	markdownCmd.AddCommand(markdownFetchCmd)
 	markdownFetchCmd.Flags().String("file-token", "", "Markdown 文件 token（必填）")
-	markdownFetchCmd.Flags().String("output", "", "本地保存路径（缺省打印到 stdout）")
+	markdownFetchCmd.Flags().String("output-path", "", "本地保存路径（缺省时打印到 stdout）")
 	markdownFetchCmd.Flags().Bool("overwrite", false, "本地路径已存在时是否覆盖")
 	markdownFetchCmd.Flags().String("output-format", "", "输出格式（json）")
 	markdownFetchCmd.Flags().String("user-access-token", "", "User Access Token（覆盖登录态）")
