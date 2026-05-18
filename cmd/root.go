@@ -47,6 +47,7 @@ var rootCmd = &cobra.Command{
   minutes   妙记（基础信息、AI 产物、媒体下载；User Token）
   mail      邮箱（发送/回复/转发/草稿/查询；User Token）
   drive     云盘增强（分块上传、有界轮询导出/导入、富文本评论、通用 task-result）
+  markdown  Drive 原生 Markdown 文件 CRUD（.md 整体读写，不转换飞书 docx 块）
   search    搜索操作（消息、应用搜索，需要用户授权）
   event     实时事件订阅（WebSocket 长连接 + daemon 进程模型；list/consume/schema/status/stop）
   slides    Slides 演示文稿（创建 + 媒体上传）
