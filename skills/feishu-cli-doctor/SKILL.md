@@ -223,3 +223,8 @@ feishu-cli doctor --only user_token,endpoint_open --json
 单测 `cmd/doctor_test.go` 覆盖：`parseOnly` 5 case / `shouldRun` 边界 / `checkProxy` 三种 env 组合 / `checkDependencies` smoke。
 
 不引入新依赖，全部用标准库 + 已有 `internal/auth` + `internal/config`。
+
+## v1 PR quality-pass 加固
+
+- **`--only` 校验未知 name**：合法 check 名为 `config_file / user_token / endpoint_open / endpoint_larksuite / proxy / dependencies`。typo（如 `--only user_tokn`）会 **报错 + 列出合法清单**，不再 silent pass（避免 CI 静默通过空检查）
+- **HTTPS_PROXY userinfo 自动 redact**：`HTTPS_PROXY=https://user:secret123@proxy.example` 在 doctor 输出里会 mask 成 `https://user:***@proxy.example`，避免 doctor 报告被 paste 时泄露 proxy 密码

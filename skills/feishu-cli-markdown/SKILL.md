@@ -59,7 +59,7 @@ feishu-cli markdown create --name plan.md --content-file ./plan.md -o json
 
 | flag | 说明 |
 |------|------|
-| `--name` | 远端文件名，**必须 `.md` 结尾**（`--content` 时必填；`--content-file` 时可省，取本地 basename） |
+| `--name` | 远端文件名，**必须 `.md` 结尾**。`create`：`--content` 时必填、`--content-file` 时可省取本地 basename。`overwrite`：可省（保留原远端名）；显式传入 = 同时改名（API 限制：不允许 fallback `<fileToken>.md` 默默改名，需用户显式确认）|
 | `--content` | 字符串内容（与 `--content-file` 二选一） |
 | `--content-file` | 本地 `.md` 文件路径 |
 | `--folder-token` | 目标文件夹（缺省 Drive 根目录） |
@@ -226,3 +226,8 @@ feishu-cli doc import ./design.md --title "设计稿" --upload-images
 | 无 | `markdown overwrite` | 老命令没有覆盖语义（只能"删了重建"，file_token 变化） |
 
 **老 `drive upload/download` 仍然可用**（二进制、非 `.md` 走老路径），新能力集中在 `markdown overwrite`（保 file_token 覆盖）。
+
+## v1 PR quality-pass 加固
+
+- **`drive/v1/files/upload_all` 单次上传 ≤ 20MB**（create / overwrite 共用 endpoint）。CLI 层在 `--content` / `--content-file` 都做 pre-check，超过直接报错不浪费带宽
+- **`overwrite` 必须显式 `--name`**（用 `--content` 时）：不再 fallback `<fileToken>.md` 默默改名远端文件；保留原名请显式 `--name <existing>.md`

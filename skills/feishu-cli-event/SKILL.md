@@ -276,3 +276,12 @@ feishu-cli event consume im.message.receive_v1 --max-events 1 --timeout 30s
 - 飞书开放平台事件订阅文档：https://open.feishu.cn/document/server-docs/event-subscription-guide/event-list
 - 项目 CHANGELOG：本模块新增详情见仓库 `CHANGELOG.md` `event 模块` 段落
 - 源码：`cmd/event*.go` + `internal/event/{bus,keys,runtime}.go`
+
+## 安全 — event_id 文件名净化
+
+`--output-dir` 启用时每条事件 dump 为 `<event_id>.json`。v1 PR 加 `sanitizeEventID` 防御：
+- 只保留 `[A-Za-z0-9_-]` 字符，长度截到 128
+- `..`、`/`、空格、特殊符号都被丢弃
+- 净化后空串 → 跳过 dump（不写空文件名文件）
+
+防御场景：服务端 payload 异常或恶意构造 `header.event_id = "../etc/passwd"` 类 payload 时，writeFile 不会逃出 `--output-dir`。

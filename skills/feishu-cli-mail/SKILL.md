@@ -194,3 +194,9 @@ feishu-cli auth check --scope "mail:user_mailbox:readonly mail:user_mailbox.mess
 ### 未做（暂未 MVP）
 
 receipt send/decline / watch (WebSocket) / share-to-chat / template update / template delete
+
+## v1 PR quality-pass 加固
+
+- **SMTP header injection 防御**：`--from` / `--from-name` / `--subject` / `--in-reply-to` / `--references` 以及 to/cc/bcc/inline 图片 filename/cid **不能含 CR/LF**，命中即 cli 层 reject 不发送
+- **内嵌图片**：`--inline-images-auto-scan` 用 `filepath.EvalSymlinks` 解软链 + Lstat + 10MB size cap；非常规文件（设备 / FIFO / socket）和 > 10MB 直接 reject
+- **`mail send` 没有 `--template-id` flag**：`mail template create` 输出的 template_id 仅用于查询/管理，飞书 API 暂未提供 send 时直接引用模板的能力（v1 PR 修正了 mail template create help 的误导）

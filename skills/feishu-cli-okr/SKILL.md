@@ -124,7 +124,7 @@ feishu-cli okr progress create \
 ```
 
 - `--progress-percent` 数字（0-100）
-- `--progress-status` 取值：`normal`（正常）/ `overdue`（已逾期）/ `done`（已完成）
+- `--progress-status` 取值：`normal`（正常）/ `risky`（有风险）/ `overdue`（已延期）— v1 PR 修正：飞书官方枚举不含 `done`，旧文档说的 done 实际就是 overdue
 - ⚠️ `--progress-status` **必须配合** `--progress-percent` 使用，单独传 status 会报错
 
 ### 富文本（ContentBlock JSON）
@@ -160,7 +160,7 @@ feishu-cli okr progress create \
 | `--content` | 纯文本内容（与 `--content-json` 二选一） | — |
 | `--content-json` | 原始 ContentBlock JSON（与 `--content` 二选一） | — |
 | `--progress-percent` | 进度百分比（数字） | — |
-| `--progress-status` | 进度状态：`normal` / `overdue` / `done` | — |
+| `--progress-status` | 进度状态：`normal` / `risky` / `overdue` | — |
 | `--source-title` | 来源标题 | `created by feishu-cli` |
 | `--source-url` | 来源 URL（⚠️ API 必填，CLI 已填默认占位） | `https://www.feishu.cn/okr/progress` |
 | `--user-id-type` | 用户 ID 类型 | `open_id` |
