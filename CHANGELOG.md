@@ -6,6 +6,41 @@
 
 ## 未发布
 
+### 新增 — `markdown {create,fetch,overwrite}`：Drive 原生 .md 文件 CRUD
+
+新增 `feishu-cli markdown` 顶层命令，把 Drive 上的 `.md` 当作普通文件整体读写，
+保留原始 Markdown 格式（**不做** Markdown ↔ 飞书 docx 块的转换）。
+
+**与 `doc import` / `doc export` 的区别**：
+
+| 命令 | 行为 | 创建出的文档类型 |
+|------|------|------------------|
+| `doc import/export` | Markdown ↔ 飞书 docx 块（标题/列表/表格/Callout…） | docx |
+| `markdown create/...` | 把 `.md` 整体上传/下载，不做转换 | file（普通 Drive 文件） |
+
+适合 AI agent 把生成的 Markdown 直接落盘到飞书 Drive、下次读回时仍是原汁原味
+Markdown 源码的场景。
+
+**子命令**：
+
+- `markdown create --name xxx.md --content "..." | --content-file path.md [--folder-token fldxxx]`
+  从字符串或本地文件创建 `.md`；强制 `.md` 后缀；空内容报错；底层走
+  `client.UploadFileWithToken`（≤ 20MB 单次上传，> 20MB 复用现成分片管线）。
+
+- `markdown fetch --file-token boxcnxxx [--output path | -]`
+  缺省 `--output` 时直接打印到 stdout（行为与 lark-cli `markdown +fetch` 一致）；
+  指定路径则落盘，目录会拼 `fileToken.md`，`--overwrite` 防误覆。
+
+- `markdown overwrite --file-token boxcnxxx --content "..." | --content-file path.md [--name renamed.md]`
+  覆盖现有 `.md` 的内容，`file_token` 保持不变；`--name` 可选改名。
+  **实现细节**：飞书 Go SDK v3.5.3 的 `UploadAllFileReqBody` 没有暴露 `file_token`
+  字段，因此本命令用 `client.Post` + `*larkcore.Formdata` 自己拼 multipart，
+  endpoint 仍是官方的 `POST /open-apis/drive/v1/files/upload_all`，参考 lark-cli
+  `shortcuts/markdown/helpers.go` 的写法。
+
+**权限**：User Access Token + `drive:file:upload` / `drive:file:download`
+（或 `drive:drive`）。
+
 ### 新增 — `comment reply add`：为已有评论添加回复
 
 新增命令 `feishu-cli comment reply add <file_token> <comment_id> --text "..."`，补齐评论回复
