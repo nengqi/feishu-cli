@@ -80,12 +80,11 @@ var markdownFetchCmd = &cobra.Command{
 			return err
 		}
 
-		data, err := os.ReadFile(finalPath)
-		if err != nil {
-			return fmt.Errorf("读取下载文件失败: %w", err)
-		}
-
 		if printToStdout {
+			data, err := os.ReadFile(finalPath)
+			if err != nil {
+				return fmt.Errorf("读取下载文件失败: %w", err)
+			}
 			if outputFormat == "json" {
 				return printJSON(map[string]any{
 					"file_token": fileToken,
