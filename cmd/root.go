@@ -50,6 +50,7 @@ var rootCmd = &cobra.Command{
   search    搜索操作（消息、应用搜索，需要用户授权）
   event     实时事件订阅（WebSocket 长连接 + daemon 进程模型；list/consume/schema/status/stop）
   slides    Slides 演示文稿（创建 + 媒体上传）
+  okr       OKR 操作（周期列表、进展记录列表与创建）
   config    配置管理（初始化配置）
 
 注意：bitable 命令已切换到 base/v3 API，flag 使用 --base-token。
