@@ -433,7 +433,7 @@ type CreateApprovalInstanceOptions struct {
 	ApprovalCode           string          // 必填：审批定义 code
 	UserID                 string          // 必填：发起人 ID（open_id/user_id/union_id）
 	Form                   string          // 必填：表单数据 JSON 字符串
-	UserIDType             string          // 可选：open_id / user_id / union_id，默认 open_id
+	UserIDType             string          // 可选：open_id / user_id，默认 open_id（v4/instances body 只接受这两种；union_id 会被拒绝）
 	DepartmentID           string          // 可选：发起人部门
 	OpenChatID             string          // 可选：发送结果到的群聊
 	NodeApproverUserIDList json.RawMessage // 可选：节点指定审批人，JSON 原文
@@ -518,8 +518,14 @@ func doApprovalPost(apiPath string, body map[string]any, userIDType, userAccessT
 	return apiResp.Data, nil
 }
 
-// CreateApprovalInstance 创建一条审批实例，返回 instance_code。
-func CreateApprovalInstance(opts CreateApprovalInstanceOptions, userAccessToken string) (*CreateApprovalInstanceResult, error) {
+// buildCreateApprovalInstanceBody 装配 POST /approval/v4/instances 的 body map，
+// 并做完整 validation + user_id_type normalize/reject。提到包级让单测能不打 HTTP 验证字段映射。
+//
+// 关键语义（飞书审批 v4 文档 + oapi-sdk-go InstanceCreate struct 双向校对）：
+//   - 该端点 body 只有 user_id 和 open_id 两个身份字段，**不接受 union_id**
+//   - user_id 优先级高于 open_id（同时存在时 open_id 被忽略），所以 ou_xxx 必须落 open_id 字段
+//   - 空 UserIDType normalize 成 open_id，与 cmd 层默认一致
+func buildCreateApprovalInstanceBody(opts CreateApprovalInstanceOptions) (map[string]any, error) {
 	if strings.TrimSpace(opts.ApprovalCode) == "" {
 		return nil, fmt.Errorf("approval_code 不能为空")
 	}
@@ -530,15 +536,10 @@ func CreateApprovalInstance(opts CreateApprovalInstanceOptions, userAccessToken 
 		return nil, fmt.Errorf("form 不能为空")
 	}
 
-	// 飞书 approval/v4/instances POST 把 user_id 和 open_id 当成两个独立 body 字段
-	// （不像 cancel/cc/task 是通过 user_id_type query 区分），user_id 优先级高于 open_id。
-	// 所以 --user-id-type=open_id + ou_xxx 输入时必须放到 open_id 字段，否则服务端找不到用户。
 	body := map[string]any{
 		"approval_code": opts.ApprovalCode,
 		"form":          opts.Form,
 	}
-	// v1 PR 二轮 rv 修：空 UserIDType normalize 为 "open_id"（与文档/cmd 层默认一致），
-	// 避免 client 层直接调用且省略 UserIDType 时 ou_xxx 错误下发到 user_id 字段。
 	uidType := strings.TrimSpace(opts.UserIDType)
 	if uidType == "" {
 		uidType = "open_id"
@@ -546,10 +547,11 @@ func CreateApprovalInstance(opts CreateApprovalInstanceOptions, userAccessToken 
 	switch uidType {
 	case "open_id":
 		body["open_id"] = opts.UserID
-	case "user_id", "union_id":
+	case "user_id":
 		body["user_id"] = opts.UserID
 	default:
-		return nil, fmt.Errorf("不支持的 user_id_type: %q（合法值: open_id / user_id / union_id）", opts.UserIDType)
+		return nil, fmt.Errorf("approval/v4/instances 不支持 user_id_type=%q（仅支持 open_id / user_id；"+
+			"该端点 body 只有 open_id 和 user_id 两个字段，参 SDK InstanceCreate struct）", opts.UserIDType)
 	}
 	if opts.DepartmentID != "" {
 		body["department_id"] = opts.DepartmentID
@@ -570,6 +572,15 @@ func CreateApprovalInstance(opts CreateApprovalInstanceOptions, userAccessToken 
 			return nil, fmt.Errorf("解析 node_cc_user_id_list 失败: %w", err)
 		}
 		body["node_cc_user_id_list"] = v
+	}
+	return body, nil
+}
+
+// CreateApprovalInstance 创建一条审批实例，返回 instance_code。
+func CreateApprovalInstance(opts CreateApprovalInstanceOptions, userAccessToken string) (*CreateApprovalInstanceResult, error) {
+	body, err := buildCreateApprovalInstanceBody(opts)
+	if err != nil {
+		return nil, err
 	}
 
 	data, err := doApprovalPost("/open-apis/approval/v4/instances", body, opts.UserIDType, userAccessToken, "创建审批实例")
