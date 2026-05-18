@@ -367,6 +367,9 @@ func outputPretty(results []checkResult) error {
 // 入参不是合法 URL 时原样返回。
 // v1 PR 二轮 rv 加固：username-only（如 token 当 username）也算凭证，统一替换成 ***，
 // 不再依赖 has-password 判定。
+// v1 PR 三轮 rv 加固：不再借助 url.URL.String() 拼接 userinfo —— net/url 会把 "***"
+// percent-encode 成 "%2A%2A%2A"，doctor 输出对用户极不直观。改成解析定位 userinfo 后
+// 手工字符串替换，保证输出字面就是 "***@host"。
 func redactProxyURL(raw string) string {
 	if raw == "" {
 		return raw
@@ -379,8 +382,22 @@ func redactProxyURL(raw string) string {
 		return raw
 	}
 	// 任何形态的 userinfo (token-only / user:pass / user-only) 一律 mask 成 ***
-	u.User = url.User("***")
-	return u.String()
+	// 注意：u.User.String() 也会 percent-encode 特殊字符，不能用来定位原文 userinfo；
+	// 但 raw 形如 "scheme://[userinfo@]host..."，scheme:// 之后第一个 '@' 之前就是 userinfo。
+	schemeIdx := strings.Index(raw, "://")
+	if schemeIdx < 0 {
+		// 没 scheme 前缀的不寻常输入，保守用 SDK 兜底（仍可能 percent-encode 但至少 mask 住凭证）
+		u.User = url.User("***")
+		return u.String()
+	}
+	rest := raw[schemeIdx+3:]
+	atIdx := strings.IndexAny(rest, "@/?#")
+	if atIdx < 0 || rest[atIdx] != '@' {
+		// 没找到 userinfo（路径里的 @ 不算）；理论不可达，因为前面 u.User != nil
+		u.User = url.User("***")
+		return u.String()
+	}
+	return raw[:schemeIdx+3] + "***" + rest[atIdx:]
 }
 
 // splitNoProxyEntries 把 NO_PROXY 按逗号 split + 去空白，每项去前导点（".feishu.cn" → "feishu.cn"）。
