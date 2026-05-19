@@ -89,10 +89,49 @@ func TestRedactProxyURLStripsUserinfo(t *testing.T) {
 			forbidden: []string{"user@"},
 		},
 		{
+			// 关键回归：密码含裸 @ 时必须按 authority **最后一个** @ 分隔（RFC + Go net/url 标准）
+			// 早期实现用 IndexAny 取第一个 @，会切出 userinfo="user:p" + 错误"host"="ssword@proxy.example"，
+			// 输出 "https://***@ssword@proxy.example/path@q" 半泄密码——三轮 rv codex 抓到的真 bug
+			name:      "password with literal @ (authority uses last @)",
+			in:        "https://user:p@ssword@proxy.example/path@q",
+			wantMask:  true,
+			wantHost:  "proxy.example/path@q",
+			forbidden: []string{"p@ssword", "ssword"},
+		},
+		{
+			name:      "IPv6 host with userinfo",
+			in:        "https://user:secret@[::1]:8080/path",
+			wantMask:  true,
+			wantHost:  "[::1]:8080/path",
+			forbidden: []string{"secret"},
+		},
+		{
+			name:     "IPv6 host without userinfo",
+			in:       "https://[::1]:8080",
+			wantMask: false,
+			wantHost: "[::1]:8080",
+		},
+		{
 			name:     "no userinfo (host:port only)",
 			in:       "https://proxy.example:8080",
 			wantMask: false,
 			wantHost: "proxy.example:8080",
+		},
+		{
+			// 路径里的 @ 不算 userinfo 分隔符；纯 host 无 userinfo 时不该 mask
+			name:     "@ in path only",
+			in:       "https://proxy.example/path@q?x=y@z",
+			wantMask: false,
+			wantHost: "proxy.example/path@q?x=y@z",
+		},
+		{
+			// 含 userinfo 但 host 部分 malformed (`[::1` 缺右括号) 仍 best-effort mask；
+			// 不能因为 url.Parse 会失败就放弃遮蔽——defense-in-depth
+			name:      "malformed host with userinfo still masked",
+			in:        "https://user:secret@[::1",
+			wantMask:  true,
+			wantHost:  "[::1",
+			forbidden: []string{"secret"},
 		},
 		{
 			name:     "empty input returns empty",
@@ -101,7 +140,7 @@ func TestRedactProxyURLStripsUserinfo(t *testing.T) {
 			wantHost: "",
 		},
 		{
-			name:     "malformed input returned as-is",
+			name:     "no scheme (not a URL form)",
 			in:       "not a url at all",
 			wantMask: false,
 			wantHost: "not a url at all",
@@ -199,6 +238,9 @@ func TestCheckProxy_NoProxyFormats(t *testing.T) {
 		{"leading dot", ".feishu.cn,.larkoffice.com,.larksuite.com"},
 		{"with port", "feishu.cn:443,larkoffice.com:443,larksuite.com:443"},
 		{"mixed whitespace", "feishu.cn , .larkoffice.com ,larksuite.com:443"},
+		// Go net/http httpproxy 标准：单独 `*` 表示所有请求不走代理；早期 noProxyCovers 不识别
+		{"asterisk wildcard", "*"},
+		{"asterisk among others", "localhost,*,127.0.0.1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

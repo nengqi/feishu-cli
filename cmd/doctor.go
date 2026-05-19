@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"runtime"
 	buildinfo "runtime/debug"
@@ -364,40 +363,45 @@ func outputPretty(results []checkResult) error {
 }
 
 // redactProxyURL 去掉 proxy URL 中的 userinfo，避免 doctor 输出泄露凭证。
-// 入参不是合法 URL 时原样返回。
-// v1 PR 二轮 rv 加固：username-only（如 token 当 username）也算凭证，统一替换成 ***，
-// 不再依赖 has-password 判定。
-// v1 PR 三轮 rv 加固：不再借助 url.URL.String() 拼接 userinfo —— net/url 会把 "***"
-// percent-encode 成 "%2A%2A%2A"，doctor 输出对用户极不直观。改成解析定位 userinfo 后
-// 手工字符串替换，保证输出字面就是 "***@host"。
+// 入参不是合法 URL 时原样返回；含 userinfo 但 URL malformed 时仍做 best-effort string redaction。
+//
+// 实现走纯字符串解析不依赖 net/url：
+//   - net/url URL.String() 会把 "***" percent-encode 成 "%2A%2A%2A"，对用户不直观
+//   - net/url Parse() 对 malformed URL（如 `https://user:secret@[::1`）返回 err，
+//     若 err 时 return raw 会让含凭证的 malformed URL 原样泄露——defense-in-depth gap
+//
+// authority 内 userinfo / host 边界按 RFC 3986 + Go net/url url.go:500-545 用**最后一个 `@`**
+// 分隔（不是第一个）。否则 `https://user:p@ssword@host` 会被切成 userinfo=`user:p`、
+// host=`ssword@host`，输出 `https://***@ssword@host` 半泄密码。
 func redactProxyURL(raw string) string {
 	if raw == "" {
 		return raw
 	}
-	u, err := url.Parse(raw)
-	if err != nil || u.User == nil {
-		return raw
-	}
-	if u.User.Username() == "" {
-		return raw
-	}
-	// 任何形态的 userinfo (token-only / user:pass / user-only) 一律 mask 成 ***
-	// 注意：u.User.String() 也会 percent-encode 特殊字符，不能用来定位原文 userinfo；
-	// 但 raw 形如 "scheme://[userinfo@]host..."，scheme:// 之后第一个 '@' 之前就是 userinfo。
+	// scheme:// 边界
 	schemeIdx := strings.Index(raw, "://")
 	if schemeIdx < 0 {
-		// 没 scheme 前缀的不寻常输入，保守用 SDK 兜底（仍可能 percent-encode 但至少 mask 住凭证）
-		u.User = url.User("***")
-		return u.String()
+		// 无 scheme，不是 URL 形态，原样返回
+		return raw
 	}
-	rest := raw[schemeIdx+3:]
-	atIdx := strings.IndexAny(rest, "@/?#")
-	if atIdx < 0 || rest[atIdx] != '@' {
-		// 没找到 userinfo（路径里的 @ 不算）；理论不可达，因为前面 u.User != nil
-		u.User = url.User("***")
-		return u.String()
+	after := raw[schemeIdx+3:]
+	// authority 范围：scheme:// 之后到第一个 / ? # 之前（path/query/fragment 里的 @ 不算 userinfo 分隔符）
+	authEnd := strings.IndexAny(after, "/?#")
+	var authority, tail string
+	if authEnd < 0 {
+		authority = after
+		tail = ""
+	} else {
+		authority = after[:authEnd]
+		tail = after[authEnd:]
 	}
-	return raw[:schemeIdx+3] + "***" + rest[atIdx:]
+	// authority 内最后一个 `@` 才是 userinfo 与 host 边界（密码里可裸 `@`，RFC 兼容）
+	at := strings.LastIndex(authority, "@")
+	if at < 0 {
+		// 无 userinfo（含纯 host:port、IPv6 `[::1]:port` 等）
+		return raw
+	}
+	// 整段 userinfo（[:at]，含 username/password 不论形态）替换为 ***，保留 `@` 起始的 host 段
+	return raw[:schemeIdx+3] + "***" + authority[at:] + tail
 }
 
 // splitNoProxyEntries 把 NO_PROXY 按逗号 split + 去空白，每项去前导点（".feishu.cn" → "feishu.cn"）。
@@ -419,11 +423,12 @@ func splitNoProxyEntries(s string) []string {
 }
 
 // noProxyCovers 检查 NO_PROXY entries 是否覆盖目标 domain（subdomain 也算）。
-// 接受精确匹配（"feishu.cn"）以及 suffix 匹配（"a.feishu.cn" 也覆盖 "feishu.cn"）。
+// 接受精确匹配（"feishu.cn"）/ suffix 匹配（"a.feishu.cn" 也覆盖 "feishu.cn"）/
+// 全通配 "*"（Go net/http httpproxy 标准：单独 `*` 表示所有请求不走代理）。
 func noProxyCovers(entries []string, domain string) bool {
 	d := strings.ToLower(domain)
 	for _, e := range entries {
-		if e == d || strings.HasSuffix(e, "."+d) {
+		if e == "*" || e == d || strings.HasSuffix(e, "."+d) {
 			return true
 		}
 	}
